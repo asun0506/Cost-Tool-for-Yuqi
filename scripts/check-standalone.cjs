@@ -23,4 +23,7 @@ assert.ok(policy[1].includes("form-action 'none'"));
 assert.ok(!/<script[^>]+src\s*=/i.test(html), 'External script references are forbidden');
 assert.ok(!/<(?:link|img|iframe)[^>]+(?:href|src)\s*=\s*["'](?:https?:)?\/\//i.test(html), 'Remote assets are forbidden');
 assert.ok(!/@import\s|url\(\s*["']?(?:https?:)?\/\//i.test(html), 'Remote CSS assets are forbidden');
+if (!process.argv.includes('--update-csp')) {
+  assert.ok(fs.readFileSync(path.join(__dirname, '../dist/index.html')).equals(fs.readFileSync(file)), 'Deployment homepage must match the offline application; run npm run build');
+}
 console.log('Standalone checks passed: syntax, inline script, matching CSP hash and no external asset references.');
