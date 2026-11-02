@@ -1,0 +1,23 @@
+# Local development and generated previews
+work/
+upload/
+generated_images/
+.codex/
+node_modules/
+coverage/
+.DS_Store
+Thumbs.db
+*.log
+.env
+.env.*
+*.pem
+*.key
+# Business inputs and encrypted workspaces must remain local
+*.xlsx
+*.xls
+*.csv
+*.tsv
+*.enc
+*.backup
+# Historical internal working documents stay local
+docs/superpowers/
