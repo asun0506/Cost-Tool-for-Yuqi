@@ -12,6 +12,12 @@
 
 运行工具无需安装 Node.js、无需启动服务器或联网。若浏览器禁止持久存储，应按页面提示手动下载工作区备份。XLSX 解压依赖浏览器 `DecompressionStream`；不支持时改用 CSV。
 
+## 腾讯云部署
+
+仓库包含默认首页 `dist/index.html`，内容与离线文件 `dist/cost-bom-tool.html` 完全一致。部署后直接访问域名首页即可进入成本工作台。
+
+保持部署配置：目标目录 `./`、构建产物目录 `./dist`、部署路径 `/`。安装命令与构建命令均可留空，无需依赖或服务器。若已填写 `npm run build`，也支持重新生成默认首页。
+
 ## 当前计算规则
 
 - 最新 EBOM 决定零件结构、配置和公共用量；Cost BOM 导入不覆盖该结构。
@@ -23,7 +29,7 @@
 
 ## 开发与验证
 
-应用源码和交付物目前均为 `dist/cost-bom-tool.html`，没有独立打包步骤。测试直接提取交付 HTML 内的脚本，避免测试到过期副本。
+应用源码和离线交付物为 `dist/cost-bom-tool.html`。运行 `npm run build` 将其同步为部署首页 `dist/index.html`；两者均可独立离线运行。测试直接提取交付 HTML 内的脚本，避免测试到过期副本。
 
 ```bash
 npm test
@@ -33,6 +39,7 @@ npm test
 
 ```bash
 node scripts/check-standalone.cjs --update-csp
+npm run build
 npm test
 ```
 

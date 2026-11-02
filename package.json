@@ -7,6 +7,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node scripts/check-standalone.cjs && node tests/check-bom-workflow-v3.js && node tests/check-delta.js && node tests/check-dynamic-domains.js"
+    "test": "node scripts/check-standalone.cjs && node tests/check-bom-workflow-v3.js && node tests/check-delta.js && node tests/check-dynamic-domains.js",
+    "build": "node -e \"require('fs').copyFileSync('dist/cost-bom-tool.html','dist/index.html')\""
   }
 }
