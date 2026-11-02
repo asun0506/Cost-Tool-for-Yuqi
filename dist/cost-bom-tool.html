@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Sea1W8A+3x6YAQNxNy23SumBieWyPiDxwiNcl65QXhA='; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'; font-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-8tdh9nkJuqXZ3WQE8538XBebI2fNRIwYRhp3D+lz280='; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'; font-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'">
 <meta name="referrer" content="no-referrer">
 <title>本地 Cost BOM 成本工作台</title>
 <style>
@@ -36,29 +36,15 @@
     <div class="brand-mark">CB</div>
     <div class="kicker" style="margin-top:18px">LOCAL COST WORKSPACE</div>
     <h1 class="boot-title" id="bootTitle">本地 Cost BOM 成本工作台</h1>
-    <p class="boot-copy">单机成本整理、EBOM 追踪与周报工具。项目数据在本机使用密码加密保存。</p>
-    <div id="bootStatus" class="alert info">正在检查本机加密存储…</div>
-    <div id="unlockPanel" class="hidden">
-      <div class="field"><label for="unlockPassword">工作区密码</label><input id="unlockPassword" type="password" autocomplete="current-password" placeholder="输入创建工作区时设置的密码"></div>
-      <div class="boot-actions"><button id="unlockButton" class="btn btn-primary">解锁本机数据</button></div>
-    </div>
-    <div id="createPanel" class="hidden">
-      <div class="field"><label for="newPassword">设置工作区密码</label><input id="newPassword" type="password" autocomplete="new-password" placeholder="建议使用至少 12 位的独立密码"></div>
-      <div class="field" style="margin-top:12px"><label for="confirmPassword">再次输入密码</label><input id="confirmPassword" type="password" autocomplete="new-password" placeholder="确认密码"></div>
-      <div class="boot-actions"><button id="createButton" class="btn btn-primary">创建加密工作区</button></div>
-    </div>
-    <div id="backupPanel" style="margin-top:18px">
-      <div class="field"><label for="backupPassword">或打开加密备份文件</label><input id="backupPassword" type="password" autocomplete="current-password" placeholder="输入备份所用密码"></div>
-      <div class="boot-actions"><button id="openBackupButton" class="btn btn-secondary">选择加密备份</button><input id="backupFile" class="hidden" type="file" accept=".json,application/json"></div>
-    </div>
+    <p class="boot-copy">单机成本整理、EBOM 追踪与周报工具。打开后自动进入本机工作区，无需密码。</p>
+    <div id="bootStatus" class="alert info">正在打开本机工作区…</div>
     <div id="bootError" class="boot-error" role="alert"></div>
-    <div class="security-box"><strong>本机安全说明</strong><br>网页本身不包含联网、遥测或云同步功能；本地持久数据使用 AES-GCM 加密。忘记密码无法恢复；浏览器数据清理或设备故障可能导致数据丢失，请定期下载加密备份。Excel/CSV/PDF 等可读导出是明文文件，由你选择本机保存位置。</div>
     <div class="boot-foot">应用只能约束自身代码，不能替代公司 IT 的网络策略，也不能防止操作系统、浏览器扩展、截图或手动复制。首次使用建议先用脱敏数据熟悉流程。</div>
   </section>
 </div>
 <div id="appShell" class="hidden">
   <aside class="sidebar">
-    <div class="side-brand"><div class="brand-mark">CB</div><div><strong>成本工作台</strong><span>LOCAL · ENCRYPTED</span></div></div>
+    <div class="side-brand"><div class="brand-mark">CB</div><div><strong>成本工作台</strong><span>LOCAL · OFFLINE</span></div></div>
     <div class="nav-label">工作区</div>
     <nav class="nav-list" aria-label="主导航">
       <button class="nav-item active" data-page="overview"><span class="nav-icon">◫</span><span class="nav-label-text">单车BOM成本看板</span></button>
@@ -70,32 +56,33 @@
       <button class="nav-item" data-page="locks"><span class="nav-icon">▣</span><span class="nav-label-text">锁板与周报</span></button>
       <button class="nav-item" data-page="audit"><span class="nav-icon">≡</span><span class="nav-label-text">操作审计</span></button>
     </nav>
-    <div class="side-bottom"><div class="local-badge"><span class="local-dot"></span><span class="local-text">本机加密工作区</span></div><div class="muted">所有数据由本机浏览器处理<br>没有应用联网功能</div></div>
+    <div class="side-bottom"><div class="local-badge"><span class="local-dot"></span><span class="local-text">本机工作区</span></div><div class="muted">所有数据由本机浏览器处理<br>没有应用联网功能</div></div>
   </aside>
   <div class="main-area">
     <header class="topbar">
       <div class="top-left"><span class="top-mark">COST CONTROL</span><span class="top-divider"></span><select id="projectSelect" class="top-project" aria-label="选择项目"></select><select id="variantSelect" class="top-select" aria-label="选择配置"></select></div>
-      <div class="top-actions"><div id="saveState" class="save-state"><span class="local-dot"></span><span>已加密保存</span></div><button class="btn btn-secondary btn-sm" data-action="backup">加密备份</button><button class="btn btn-quiet btn-icon" title="锁定工作区" data-action="lock">⌑</button></div>
+      <div class="top-actions"><div id="saveState" class="save-state"><span class="local-dot"></span><span>已保存到本机</span></div><button class="btn btn-secondary btn-sm" data-action="backup">工作区备份</button><button class="btn btn-secondary btn-sm" data-action="restore-backup">恢复备份</button><button id="legacyWorkspaceButton" class="btn btn-quiet btn-sm hidden" data-action="import-legacy">导入旧工作区</button></div>
     </header>
     <main id="content" class="content"></main>
   </div>
 </div>
 <dialog id="dialog" class="dialog"><div class="dialog-shell"><div class="dialog-head"><h2 id="dialogTitle"></h2><button class="dialog-x" type="button" data-action="close-dialog" aria-label="关闭">×</button></div><div id="dialogBody" class="dialog-body"></div></div></dialog>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
+<input id="backupFile" class="hidden" type="file" accept=".json,application/json">
 <input id="ebomFile" class="hidden" type="file" accept=".xlsx,.csv,.tsv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
 <script>
 'use strict';
 const DB_NAME = 'local-cost-bom-workspace-v1';
 const STORE_NAME = 'encrypted-state';
-const STATE_KEY = 'workspace';
+const STATE_KEY = 'workspace-passwordless';
+const LEGACY_STATE_KEY = 'workspace';
 const APP_LABEL = 'Local Cost BOM Workspace';
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_BACKUP_BYTES = 200 * 1024 * 1024;
 const MAX_EXPANDED_BYTES = 100 * 1024 * 1024;
 let db = null;
 let persistenceMode = 'manual';
-let encryptionKey = null;
-let saltBytes = null;
+
 let appState = null;
 let currentPage = 'overview';
 let currentVariantId = null;
@@ -199,8 +186,8 @@ function openDatabase() {
     try { request = indexedDB.open(DB_NAME, 1); } catch (error) { reject(error); return; }
     request.onupgradeneeded = () => { if (!request.result.objectStoreNames.contains(STORE_NAME)) request.result.createObjectStore(STORE_NAME); };
     request.onsuccess = () => { db = request.result; db.onversionchange = () => db.close(); resolve(db); };
-    request.onerror = () => reject(request.error || new Error('无法打开本机加密存储'));
-    request.onblocked = () => reject(new Error('本机加密存储被其他页面占用'));
+    request.onerror = () => reject(request.error || new Error('无法打开本机存储'));
+    request.onblocked = () => reject(new Error('本机存储被其他页面占用'));
   });
 }
 function dbGet(key) {
@@ -223,19 +210,16 @@ function dbPut(key, value) {
   });
 }
 async function persistState() {
-  if (!encryptionKey || !saltBytes || !appState) return false;
+  if (!appState) return false;
   if (persistenceMode !== 'indexeddb' || !db) {
     setSaveState('manual');
     return false;
   }
   const snapshot = clone(appState);
-  const key = encryptionKey;
-  const salt = saltBytes.slice();
   pendingWrites++;
   setSaveState('working');
   const operation = async () => {
-    const envelope = await encryptState(snapshot, key, salt);
-    await dbPut(STATE_KEY, envelope);
+    await dbPut(STATE_KEY, snapshot);
     return true;
   };
   const queued = saveQueue.then(operation, operation);
@@ -249,7 +233,7 @@ async function persistState() {
     pendingWrites--;
     persistenceMode = 'manual';
     setSaveState('manual');
-    showToast('本机自动保存失败。请立即下载加密工作区文件。', true);
+    showToast('本机自动保存失败。请立即下载工作区备份文件。', true);
     return false;
   }
 }
@@ -258,13 +242,13 @@ function setSaveState(status) {
   if (!el) return;
   if (status === 'saved') {
     el.className = 'save-state';
-    el.innerHTML = '<span class="local-dot"></span><span>已加密保存</span>';
+    el.innerHTML = '<span class="local-dot"></span><span>已保存到本机</span>';
   } else if (status === 'working') {
     el.className = 'save-state warning';
-    el.innerHTML = '<span class="local-dot"></span><span>正在加密保存…</span>';
+    el.innerHTML = '<span class="local-dot"></span><span>正在保存…</span>';
   } else {
     el.className = 'save-state warning';
-    el.innerHTML = '<span class="local-dot"></span><span>需要手动下载加密文件</span>';
+    el.innerHTML = '<span class="local-dot"></span><span>需要手动下载备份</span>';
   }
   const banner = $('#offlineBanner');
   if (banner) banner.classList.toggle('hidden', persistenceMode === 'indexeddb');
@@ -321,116 +305,72 @@ function showApp() {
   if (!currentVariantId && getActiveProject()) currentVariantId = getActiveProject().variants[0] && getActiveProject().variants[0].id;
   render();
 }
+function validateWorkspace(parsed) {
+  if (!parsed || parsed.schemaVersion !== 1 || !Array.isArray(parsed.projects) || !Array.isArray(parsed.auditEvents)) throw new Error('文件数据结构不完整或版本不兼容。');
+  parsed.partMaster = safeDictionary(parsed.partMaster);
+  for (const project of parsed.projects) project.attributes = safeDictionary(project.attributes);
+  return parsed;
+}
 async function initializeBoot() {
-  const status = $('#bootStatus');
+  let warning = '';
   try {
     await openDatabase();
+    const saved = await dbGet(STATE_KEY);
+    appState = saved ? validateWorkspace(saved) : createEmptyState();
     persistenceMode = 'indexeddb';
-    const envelope = await dbGet(STATE_KEY);
-    if (envelope) {
-      status.textContent = '检测到本机加密工作区。请输入密码解锁。';
-      $('#unlockPanel').classList.remove('hidden');
-      $('#createPanel').classList.add('hidden');
-    } else {
-      status.textContent = '尚未创建工作区。先设置密码，再开始整理数据。';
-      $('#unlockPanel').classList.add('hidden');
-      $('#createPanel').classList.remove('hidden');
-    }
+    if (!saved) await persistState();
+    const legacy = await dbGet(LEGACY_STATE_KEY);
+    $('#legacyWorkspaceButton').classList.toggle('hidden', !legacy);
   } catch (error) {
     persistenceMode = 'manual';
-    status.className = 'alert';
-    status.textContent = '浏览器无法使用自动加密存储。可继续在内存中操作，但每次修改后请下载加密工作区文件。';
-    $('#unlockPanel').classList.add('hidden');
-    $('#createPanel').classList.remove('hidden');
+    appState = appState || createEmptyState();
+    warning = '本机存储暂不可用，当前修改需下载备份；已有存储未被覆盖。';
   }
+  showApp();
+  setSaveState(persistenceMode === 'indexeddb' ? 'saved' : 'manual');
+  if (warning) showToast(warning, true);
 }
-async function createWorkspace() {
-  const first = $('#newPassword').value;
-  const second = $('#confirmPassword').value;
-  if (first.length < 8) return showBoot('密码至少 8 位；建议使用 12 位以上的独立密码。');
-  if (first !== second) return showBoot('两次输入的密码不一致。');
-  try {
-    saltBytes = crypto.getRandomValues(new Uint8Array(16));
-    encryptionKey = await deriveKey(first, saltBytes);
-    appState = createEmptyState();
-    const event = makeEventPayload({entityType:'workspace', action:'create', after:{schemaVersion:1, projectCount:0}, note:'创建本机加密工作区'});
-    event.eventHash = await sha256Hex(textEncoder.encode(canonical(event)));
-    appState.auditEvents.push(event);
-    if (persistenceMode === 'indexeddb') {
-      try {
-        await dbPut(STATE_KEY, await encryptState(appState, encryptionKey, saltBytes));
-        setSaveState('saved');
-      } catch (_) {
-        persistenceMode = 'manual';
-        setSaveState('manual');
-      }
-    }
-    $('#newPassword').value = '';
-    $('#confirmPassword').value = '';
-    showApp();
-    showToast(persistenceMode === 'indexeddb' ? '加密工作区已创建并保存在本机。' : '工作区已创建；当前浏览器不支持自动保存，请先下载加密文件。', persistenceMode !== 'indexeddb');
-  } catch (error) { showBoot('无法创建加密工作区：' + (error.message || '本机加密功能不可用。')); }
-}
-async function unlockWorkspace() {
-  const passphrase = $('#unlockPassword').value;
-  try {
-    const envelope = await dbGet(STATE_KEY);
-    if (!envelope) throw new Error('没有找到本机加密工作区。');
-    saltBytes = fromB64(envelope.salt);
-    encryptionKey = await deriveKey(passphrase, saltBytes);
-    appState = await decryptState(envelope, encryptionKey);
-    $('#unlockPassword').value = '';
-    showApp();
-    setSaveState('saved');
-  } catch (error) { showBoot('密码错误，或本机加密数据已损坏。数据未解锁。'); }
-}
-async function openEncryptedBackup(file) {
-  try {
-    if (!file) return;
-    if (file.size > MAX_BACKUP_BYTES) throw new Error('加密备份文件超过 200 MB 限制。');
-    const parsed = JSON.parse(await file.text());
-    const envelope = parsed.envelope || parsed;
-    const passphrase = $('#backupPassword').value;
-    if (!passphrase) throw new Error('请先输入备份密码。');
-    saltBytes = fromB64(envelope.salt);
-    encryptionKey = await deriveKey(passphrase, saltBytes);
-    appState = await decryptState(envelope, encryptionKey);
-    const event = makeEventPayload({entityType:'workspace', action:'restore', before:null, after:{source:'encrypted-backup', fileName:file.name}, note:'从加密备份打开工作区'});
-    event.eventHash = await sha256Hex(textEncoder.encode(canonical(event)));
-    appState.auditEvents.push(event);
-    if (persistenceMode === 'indexeddb') await persistState();
-    $('#backupPassword').value = '';
-    $('#backupFile').value = '';
-    showApp();
-    showToast('加密备份已打开。', persistenceMode !== 'indexeddb');
-  } catch (error) { showBoot(error.message || '无法打开备份；请检查密码和文件。'); }
-}
-async function lockWorkspace() {
-  if (encryptionKey && appState) {
-    if (persistenceMode !== 'indexeddb' && !confirm('当前浏览器无法自动保存。锁定前需要下载加密工作区文件。继续下载并锁定吗？')) return;
-    const project = getActiveProject();
-    await commitMutation({projectId:project ? project.id : null,entityType:'workspace',action:'lock',before:null,after:{lockedAt:nowIso(),activeProjectId:project ? project.id : null},note:'用户主动锁定本机工作区'},() => {});
-    if (persistenceMode !== 'indexeddb') {
-      await downloadEncryptedWorkspace();
-      if (!confirm('请确认加密工作区文件已下载并保存。确认后将锁定页面。')) return;
-    }
-  }
-  appState = null;
-  encryptionKey = null;
-  saltBytes = null;
+async function restoreWorkspace(state, source) {
+  const restored = validateWorkspace(state);
+  if (!confirm('恢复会替换当前工作区，请先下载当前数据备份。继续恢复吗？')) return false;
+  // Finish queued writes before replacing the active workspace.
+  await saveQueue;
+  appState = restored;
+  currentVariantId = null;
   pendingImport = null;
   currentReportId = null;
-  $('#content').replaceChildren();
-  $('#projectSelect').replaceChildren();
-  $('#variantSelect').replaceChildren();
-  if ($('#dialog').open) $('#dialog').close();
-  $('#dialogBody').replaceChildren();
-  $('#unlockPassword').value = '';
-  $('#newPassword').value = '';
-  $('#confirmPassword').value = '';
-  $('#backupPassword').value = '';
-  await initializeBoot();
-  showBoot();
+  currentPage = 'overview';
+  const event = makeEventPayload({entityType:'workspace', action:'restore', before:null, after:{source}, note:'恢复本机工作区'});
+  event.eventHash = await sha256Hex(textEncoder.encode(canonical(event)));
+  appState.auditEvents.push(event);
+  await persistState();
+  showApp();
+  return true;
+}
+async function readLegacyWorkspace(envelope) {
+  const passphrase = prompt('请输入旧版工作区或旧加密备份的密码（仅本次导入需要）：');
+  if (passphrase === null) return null;
+  const key = await deriveKey(passphrase, fromB64(envelope.salt));
+  return decryptState(envelope, key);
+}
+async function importLegacyWorkspace() {
+  try {
+    const envelope = await dbGet(LEGACY_STATE_KEY);
+    if (!envelope) throw new Error('没有找到旧版工作区。');
+    const state = await readLegacyWorkspace(envelope);
+    if (state && await restoreWorkspace(state, 'legacy-workspace')) showToast('旧工作区已导入，以后打开无需密码。');
+  } catch (error) { showToast('旧工作区导入失败，请检查旧密码。原数据已保留。', true); }
+}
+async function openWorkspaceBackup(file) {
+  try {
+    if (!file) return;
+    if (file.size > MAX_BACKUP_BYTES) throw new Error('备份文件超过 200 MB 限制。');
+    const parsed = JSON.parse(await file.text());
+    const envelope = parsed.envelope || parsed;
+    const state = envelope.ciphertext ? await readLegacyWorkspace(envelope) : (parsed.state || parsed);
+    if (state && await restoreWorkspace(state, file.name)) showToast('备份已恢复。', persistenceMode !== 'indexeddb');
+  } catch (error) { showToast('无法恢复备份：' + error.message, true); }
+  finally { $('#backupFile').value = ''; }
 }
 function projectNames() { return appState ? appState.projects.map(project => project.name).join(', ') : ''; }
 
@@ -754,7 +694,7 @@ function eventLabel(event) {
   return labels[event.action] || event.action;
 }
 function actionName(action) { return ({create:'新增',update:'更新',void:'作废',import:'导入',restore:'恢复',export:'导出',lock:'锁板',report:'生成'})[action] || action; }
-function entityLabel(type) { return ({workspace:'工作区',project:'车型项目',price:'价格记录',partAttributes:'零件信息',ebomImport:'EBOM 版本',costChange:'成本变更',costBomImport:'Cost BOM导入',costBomChangeLink:'BOM差异关联',bomArchiveExport:'BOM原文件下载',risk:'风险',riskProgress:'风险进度',lockSnapshot:'锁板记录',weeklyReport:'周报',readableExport:'文件导出',encryptedBackup:'加密备份'})[type] || type; }
+function entityLabel(type) { return ({workspace:'工作区',project:'车型项目',price:'价格记录',partAttributes:'零件信息',ebomImport:'EBOM 版本',costChange:'成本变更',costBomImport:'Cost BOM导入',costBomChangeLink:'BOM差异关联',bomArchiveExport:'BOM原文件下载',risk:'风险',riskProgress:'风险进度',lockSnapshot:'锁板记录',weeklyReport:'周报',readableExport:'文件导出',workspaceBackup:'工作区备份',encryptedBackup:'旧版加密备份'})[type] || type; }
 function currentProjectOrEmpty() { return getActiveProject(); }
 function updateTopbar() {
   const projectSelect = $('#projectSelect');
@@ -783,14 +723,14 @@ function pageHead(kicker, title, subtitle, actions = '') {
   return '<div class="page-head"><div><div class="kicker">' + esc(kicker) + '</div><h1>' + esc(title) + '</h1><p>' + esc(subtitle) + '</p></div><div class="head-actions">' + actions + '</div></div>';
 }
 function emptyProjectState() {
-  return '<div class="empty-state"><div class="empty-icon">＋</div><h2>先建立一个车型项目</h2><p>项目数据只保存在这个本机加密工作区。每个项目可设置高 / 中 / 低配，再导入 EBOM 建立 Cost BOM。</p><button class="btn btn-primary" data-action="new-project">创建车型项目</button></div>';
+  return '<div class="empty-state"><div class="empty-icon">＋</div><h2>先建立一个车型项目</h2><p>项目数据只保存在这个本机工作区。每个项目可设置高 / 中 / 低配，再导入 EBOM 建立 Cost BOM。</p><button class="btn btn-primary" data-action="new-project">创建车型项目</button></div>';
 }
 function emptyBOMState() {
   return '<div class="empty-state"><div class="empty-icon">⇧</div><h2>导入 EBOM 建架构，或直接导入 Cost BOM</h2><p>支持 XLSX 和 CSV。导入时可映射零件号、名称、位置与高中低配用量；系统按零件号识别同一零件并保留每个来源位置。</p><button class="btn btn-primary" data-action="select-ebom">选择 EBOM 文件</button> <button class="btn btn-secondary" data-action="select-cost">导入Cost BOM</button></div>';
 }
 function renderPage() {
   const content = $('#content');
-  const offlineBanner = persistenceMode === 'indexeddb' ? '' : '<div id="offlineBanner" class="alert"><strong>自动保存不可用。</strong>修改目前只保存在当前页面内存中；完成一批修改后请使用右上角“加密备份”下载加密工作区文件。锁定或关闭页面会清除尚未下载的修改。</div>';
+  const offlineBanner = persistenceMode === 'indexeddb' ? '' : '<div id="offlineBanner" class="alert"><strong>自动保存不可用。</strong>修改目前只保存在当前页面内存中；完成一批修改后请使用右上角“工作区备份”下载工作区备份文件。关闭页面会清除尚未下载的修改。</div>';
   if (!appState) { content.innerHTML = ''; return; }
   if (!getActiveProject()) {
     content.innerHTML = offlineBanner + pageHead('COST HEALTH','单车BOM成本看板','车型成本、变更与风险的个人工作台', '<button class="btn btn-primary" data-action="new-project">创建车型项目</button>') + emptyProjectState();
@@ -1803,7 +1743,7 @@ function changeDialog(changeId) {
   const categoryOptions = [['product','产品变更'],['styling','造型变更'],['engineering','工程变更'],['commercial','商务变更']].map(([value,label]) => '<option value="'+value+'"'+(category === value ? ' selected' : '')+'>'+label+'</option>').join('');
   const costBomOptions = [['no','否'],['yes','是']].map(([value,label]) => '<option value="'+value+'"'+((value === 'yes') === costBomEntry ? ' selected' : '')+'>'+label+'</option>').join('');
   const basisOptions = [['unit','零件单价差Δ（元/件）'],['vehicleDelta','单车成本增减额Δ（元/车）']].map(([value,label]) => '<option value="'+value+'"'+(basis === value ? ' selected' : '')+'>'+label+'</option>').join('');
-  const body = '<form id="changeForm"><input type="hidden" name="changeId" value="'+esc(changeId || '')+'"><div id="changeFormError" class="alert error hidden" role="alert"></div><div class="form-grid"><div class="field full"><label>变更号（唯一，保存后不可修改）</label><input name="changeNumber" required maxlength="120" value="'+esc(change?changeNumberOf(change):nextChangeNumber())+'"'+(change?' readonly':'')+'></div><div class="field"><label>变更类别</label><select name="category">'+categoryOptions+'</select></div><div class="field"><label>变更状态（自动）</label><input id="changeAutoStatus" value="'+esc(CHANGE_PROGRESS_LABELS[progress])+'" readonly aria-live="polite"><div class="hint">会议及预算齐全为推进中；落地价齐全为已完成。</div></div><div class="field"><label>变更日期</label><input name="date" type="date" value="'+esc(change && change.date || dateInputValue())+'" required></div><div class="field"><label>是否进入 Cost BOM</label><select name="costBomEntry">'+costBomOptions+'</select></div><div class="field full"><label>备注</label><input name="costBomRemark" maxlength="500" value="'+esc(change && change.costBomRemark || '')+'" placeholder="可填写进入或暂不进入的说明"></div><div class="field full"><label>涉及车型配置（可多选）</label><div class="change-choices">'+checkboxes+'</div><div id="changeNoVariants" class="hint'+(selected.length ? ' hidden' : '')+'">请先勾选至少一个配置，再填写各配置价格。</div></div><div class="field full"><label>原因 / 变更说明</label><textarea name="reason" required maxlength="2000">'+esc(change && change.reason || '')+'</textarea></div><div class="field"><label>会议名称</label><input name="meetingName" maxlength="200" value="'+esc(meetingName)+'" placeholder="可稍后补充"></div><div class="field"><label>会议日期</label><input name="meetingDate" type="date" value="'+esc(meeting.date || '')+'"></div><div class="field full"><label>会议纪要截图（选填）</label><input name="meetingScreenshot" type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"><div class="hint">'+esc(screenshotText)+' 截图随工作区加密保存。</div></div><div class="field full"><label>金额口径（预算与落地共用）</label><select name="budgetBasis">'+basisOptions+'</select><div class="hint">预算和落地均填写相对原成本的Δ：涨价为正，降价为负。单车口径直接汇总，无需用量；零件口径按Δ×装车用量计算，已匹配时自动取BOM用量。</div></div><div class="field full"><div class="change-part-list-head"><label>涉及零件及各配置价格</label><button type="button" class="btn btn-secondary btn-sm" data-action="add-change-item">＋ 添加零件</button></div><div id="changeItems">'+entries+'</div><div class="hint">填写会议名称和日期后，已有预算或落地价的配置即计入看板预测。选择“是”且对应资料齐全、零件号匹配时才实际写入 Cost BOM，写入后不重复叠加。</div></div></div>'+dialogFooter('取消',change ? '保存更新' : '保存变更')+'</form>';
+  const body = '<form id="changeForm"><input type="hidden" name="changeId" value="'+esc(changeId || '')+'"><div id="changeFormError" class="alert error hidden" role="alert"></div><div class="form-grid"><div class="field full"><label>变更号（唯一，保存后不可修改）</label><input name="changeNumber" required maxlength="120" value="'+esc(change?changeNumberOf(change):nextChangeNumber())+'"'+(change?' readonly':'')+'></div><div class="field"><label>变更类别</label><select name="category">'+categoryOptions+'</select></div><div class="field"><label>变更状态（自动）</label><input id="changeAutoStatus" value="'+esc(CHANGE_PROGRESS_LABELS[progress])+'" readonly aria-live="polite"><div class="hint">会议及预算齐全为推进中；落地价齐全为已完成。</div></div><div class="field"><label>变更日期</label><input name="date" type="date" value="'+esc(change && change.date || dateInputValue())+'" required></div><div class="field"><label>是否进入 Cost BOM</label><select name="costBomEntry">'+costBomOptions+'</select></div><div class="field full"><label>备注</label><input name="costBomRemark" maxlength="500" value="'+esc(change && change.costBomRemark || '')+'" placeholder="可填写进入或暂不进入的说明"></div><div class="field full"><label>涉及车型配置（可多选）</label><div class="change-choices">'+checkboxes+'</div><div id="changeNoVariants" class="hint'+(selected.length ? ' hidden' : '')+'">请先勾选至少一个配置，再填写各配置价格。</div></div><div class="field full"><label>原因 / 变更说明</label><textarea name="reason" required maxlength="2000">'+esc(change && change.reason || '')+'</textarea></div><div class="field"><label>会议名称</label><input name="meetingName" maxlength="200" value="'+esc(meetingName)+'" placeholder="可稍后补充"></div><div class="field"><label>会议日期</label><input name="meetingDate" type="date" value="'+esc(meeting.date || '')+'"></div><div class="field full"><label>会议纪要截图（选填）</label><input name="meetingScreenshot" type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"><div class="hint">'+esc(screenshotText)+' 截图随工作区本机保存。</div></div><div class="field full"><label>金额口径（预算与落地共用）</label><select name="budgetBasis">'+basisOptions+'</select><div class="hint">预算和落地均填写相对原成本的Δ：涨价为正，降价为负。单车口径直接汇总，无需用量；零件口径按Δ×装车用量计算，已匹配时自动取BOM用量。</div></div><div class="field full"><div class="change-part-list-head"><label>涉及零件及各配置价格</label><button type="button" class="btn btn-secondary btn-sm" data-action="add-change-item">＋ 添加零件</button></div><div id="changeItems">'+entries+'</div><div class="hint">填写会议名称和日期后，已有预算或落地价的配置即计入看板预测。选择“是”且对应资料齐全、零件号匹配时才实际写入 Cost BOM，写入后不重复叠加。</div></div></div>'+dialogFooter('取消',change ? '保存更新' : '保存变更')+'</form>';
   openDialog(change ? '更新成本变更 · '+changeNumberOf(change) : '新增成本变更',body);
   $('#dialog').classList.add('change-dialog-wide');
   syncChangeVariantRows();
@@ -2001,13 +1941,13 @@ function renderAudit() {
     const project = event.projectId ? getProject(event.projectId) : null;
     return '<tr><td>' + esc(asDateTime(event.occurredAt)) + '</td><td><span class="td-main">' + esc(entityLabel(event.entityType)) + '</span><div class="part-no">' + esc(project ? project.name : '工作区') + '</div></td><td>' + esc(actionName(event.action)) + '</td><td class="mono">' + esc((event.partNumbers || []).join(', ') || '—') + '</td><td><div class="before-after"><b>前：</b>' + esc(before.slice(0,220)) + (before.length > 220 ? '…' : '') + '<br><b>后：</b>' + esc(after.slice(0,220)) + (after.length > 220 ? '…' : '') + '<div style="margin-top:5px"><button class="btn btn-quiet btn-sm" data-action="view-audit-event" data-event="' + esc(event.eventId) + '">查看完整前后值</button></div><small>' + esc(event.note || '') + '</small></div></td><td class="mono audit-hash" title="' + esc(event.eventHash) + '">' + esc(event.eventHash) + '</td></tr>';
   }).join('') : '<tr><td colspan="6"><div class="empty-inline">尚无操作事件。</div></td></tr>';
-  return pageHead('AUDIT TRAIL','操作审计','操作事件追加保存，使用 SHA-256 哈希链检查本机日志一致性', '<button class="btn btn-secondary" data-action="verify-audit">校验日志链</button>') + '<div id="auditResult" class="alert info hidden"></div><div class="alert">哈希链可帮助发现记录被意外改动或缺段；日志和加密密钥都在本机，不能防止具有本机权限的人刻意改写浏览器数据，也不是第三方见证或法律级不可篡改记录。</div><section class="card"><div class="panel-head"><h2>全部操作</h2><span class="small muted">' + events.length + ' 条 · 只读</span></div><div class="table-wrap"><table class="data-table audit-table" style="min-width:1050px"><thead><tr><th>时间</th><th>对象</th><th>动作</th><th>零件号</th><th>差异摘要</th><th>事件哈希</th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
+  return pageHead('AUDIT TRAIL','操作审计','操作事件追加保存，使用 SHA-256 哈希链检查本机日志一致性', '<button class="btn btn-secondary" data-action="verify-audit">校验日志链</button>') + '<div id="auditResult" class="alert info hidden"></div><div class="alert">哈希链可帮助发现记录被意外改动或缺段；日志保存在本机，不能防止具有本机权限的人刻意改写浏览器数据，也不是第三方见证或法律级不可篡改记录。</div><section class="card"><div class="panel-head"><h2>全部操作</h2><span class="small muted">' + events.length + ' 条 · 只读</span></div><div class="table-wrap"><table class="data-table audit-table" style="min-width:1050px"><thead><tr><th>时间</th><th>对象</th><th>动作</th><th>零件号</th><th>差异摘要</th><th>事件哈希</th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
 }
 function viewAuditEventDialog(eventId) {
   const event = appState.auditEvents.find(item => item.eventId === eventId);
   if (!event) return;
   const payload = JSON.stringify({projectId:event.projectId,entityType:event.entityType,entityId:event.entityId,action:event.action,partNumbers:event.partNumbers,occurredAt:event.occurredAt,note:event.note,before:event.before,after:event.after,previousHash:event.previousHash,eventHash:event.eventHash},null,2);
-  openDialog('操作详情 · ' + entityLabel(event.entityType) + ' / ' + actionName(event.action),'<pre style="white-space:pre-wrap;word-break:break-word;max-height:65vh;overflow:auto;background:#f5f8f7;padding:13px;border-radius:9px;font-size:10px">' + esc(payload) + '</pre><div class="small muted" style="margin-top:10px">操作记录和差异明细保存在本机加密工作区。</div><div class="modal-footer"><button class="btn btn-secondary" data-action="close-dialog">关闭</button></div>');
+  openDialog('操作详情 · ' + entityLabel(event.entityType) + ' / ' + actionName(event.action),'<pre style="white-space:pre-wrap;word-break:break-word;max-height:65vh;overflow:auto;background:#f5f8f7;padding:13px;border-radius:9px;font-size:10px">' + esc(payload) + '</pre><div class="small muted" style="margin-top:10px">操作记录和差异明细保存在本机工作区。</div><div class="modal-footer"><button class="btn btn-secondary" data-action="close-dialog">关闭</button></div>');
 }
 function xmlEscape(value) { return String(value == null ? '' : value).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;'); }
 function excelColumn(index) {
@@ -2108,15 +2048,13 @@ async function exportReadableFile(project, filename, type, bytes, partNumbers, d
   bytesDownload(filename, bytes, type === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv;charset=utf-8');
   showToast('可读文件已生成。该文件为明文，请保存到公司批准的本机目录。');
 }
-async function downloadEncryptedWorkspace() {
-  if (!appState || !encryptionKey) return;
-  const name = 'cost-bom-encrypted-' + dateInputValue(new Date()).replace(/-/g,'') + '.json';
-  await commitMutation({entityType:'encryptedBackup',action:'export',before:null,after:{type:'encrypted-json',filename:name,createdAt:nowIso()},note:'生成加密项目文件'},() => {});
-  const envelope = await encryptState(appState,encryptionKey,saltBytes);
-  const payload = {app:APP_LABEL,formatVersion:1,createdAt:nowIso(),envelope};
+async function downloadWorkspaceBackup() {
+  if (!appState) return;
+  const name = 'cost-bom-backup-' + dateInputValue(new Date()).replace(/-/g,'') + '.json';
+  await commitMutation({entityType:'workspaceBackup',action:'export',before:null,after:{type:'json',filename:name,createdAt:nowIso()},note:'生成工作区备份'},() => {});
+  const payload = {app:APP_LABEL,formatVersion:2,createdAt:nowIso(),state:clone(appState)};
   bytesDownload(name,JSON.stringify(payload), 'application/json');
-  if (persistenceMode === 'indexeddb') showToast('加密备份已下载；本机自动保存仍在工作。');
-  else showToast('加密工作区文件已下载，请妥善保存并在每次修改后重新下载。',true);
+  showToast('工作区备份已下载。', persistenceMode !== 'indexeddb');
 }
 function lockSnapshot(project, variantId, reason) {
   const variant = getVariant(project,variantId);
@@ -2415,8 +2353,9 @@ async function handleClick(event) {
       el.textContent = result.ok ? '校验通过：' + result.count + ' 条事件的 SHA-256 链连续且内容一致。' : '校验未通过。异常事件序号：' + result.failures.join('、') + '。不要继续依赖该日志链，请先导出工作区副本并检查数据。';
       return;
     }
-    if (action === 'backup') return downloadEncryptedWorkspace();
-    if (action === 'lock') return lockWorkspace();
+    if (action === 'backup') return downloadWorkspaceBackup();
+    if (action === 'restore-backup') return $('#backupFile').click();
+    if (action === 'import-legacy') return importLegacyWorkspace();
     if (action === 'close-dialog') return closeDialog();
     if (action === 'cancel-import') { pendingImport = null; renderPage(); return; }
     if (action === 'preview-import') return previewImport();
@@ -2639,7 +2578,7 @@ async function downloadBomArchive(kind,importId){
  const project=getActiveProject(),record=(kind==='cost'?project.costImports || []:project.imports).find(row=>row.importId===importId),archive=(project.bomArchives || []).find(row=>row.archiveId===record?.archiveId);
  if(!archive)throw new Error('此旧版本只保存了数据快照，没有原始文件；从本次更新后的导入开始存档原文件。');
  const bytes=fromB64(archive.base64),hash=await sha256Hex(bytes);if(hash!==archive.sha256)throw new Error('原文件校验未通过，已停止导出');
- await commitMutation({projectId:project.id,entityType:'bomArchiveExport',entityId:archive.archiveId,action:'export',before:null,after:{importId,kind,fileName:archive.fileName,sha256:hash,size:bytes.byteLength},note:'下载本机加密工作区中存档的原始BOM文件'},()=>{});
+ await commitMutation({projectId:project.id,entityType:'bomArchiveExport',entityId:archive.archiveId,action:'export',before:null,after:{importId,kind,fileName:archive.fileName,sha256:hash,size:bytes.byteLength},note:'下载本机工作区中存档的原始BOM文件'},()=>{});
  bytesDownload(archive.fileName,bytes,archive.mime);
 }
 function renderMappingWizard(){
@@ -2653,7 +2592,7 @@ function renderMappingWizard(){
  const changes=cost?preview.diff.changes:preview.diff.details || [],showSource=preview.rows.slice(0,5),headers=showSource[0]?.sourceFields || [];
  const choices=conflicts.map(row=>'<tr><td>'+esc(row.partNumber)+'</td><td>'+esc(stageLabel(row.stage))+'</td><td>'+esc(row.variantIds.map(id=>getVariant(getActiveProject(),id)?.name).join('、'))+'</td><td>'+esc(money(row.before.amount))+'</td><td>'+esc(money(row.after.amount))+'</td><td><select data-cost-price-choice="'+esc(row.key)+'"><option value="">请选择</option><option value="old"'+(pending.priceChoices?.[row.key]==='old'?' selected':'')+'>保留原价</option><option value="new"'+(pending.priceChoices?.[row.key]==='new'?' selected':'')+'>采用导入价</option></select></td></tr>').join('');
  const noEbom=cost&&!getActiveProject().imports.length;
- return '<section class="card" style="margin-bottom:14px"><div class="panel-head"><h2>'+esc(cost?'Cost BOM导入预览与价格确认':'EBOM导入预览')+'</h2><button class="btn btn-quiet btn-sm" data-action="edit-bom-mapping">调整字段设置</button></div><div class="panel-body"><div class="small muted">'+esc(pending.mappingSource || '字段已识别')+' · '+esc(pending.fileName)+' · '+preview.rows.length+'行 · 原文件将在确认导入后加密存档</div><div class="field"><label>版本标识</label><input id="importVersionLabel" value="'+esc(pending.versionLabel)+'"></div>'+(pending.parsed.sheets.length>1?'<div class="field"><label>工作表</label><select id="sheetPicker">'+pending.parsed.sheets.map((s,i)=>'<option value="'+i+'"'+(i===pending.sheetIndex?' selected':'')+'>'+esc(s.name)+'</option>').join('')+'</select></div>':'')+(cost?'<div class="field"><label>导入价格状态</label><select data-map-field="priceStatus"><option value="formal"'+(mapping.priceStatus==='formal'?' selected':'')+'>正式价</option><option value="estimate"'+(mapping.priceStatus==='estimate'?' selected':'')+'>预估价</option></select></div>':'')+'<div class="alert info">S＝标配×公共用量；O＝选配，仅展示单价；-＝不配。'+(cost?'Cost BOM仅更新价格，不改写EBOM配置结构。相同或首次补充的信息自动填入，不同价格需要选择。':'本次确认后自动锁板、保存原始文件并记录全部变化。')+'</div>'+(preview.errors.length?'<div class="alert error">'+preview.errors.slice(0,25).map(esc).join('<br>')+(preview.errors.length>25?'<br>共 '+preview.errors.length+' 项，请修正源文件后重试。':'')+'</div>':'')+(noEbom?'<div class="alert error">请先导入EBOM，Cost BOM必须按最新版EBOM生成。</div>':'')+(cost&&pending.reconciliation.unmatched.length?'<div class="alert">有'+pending.reconciliation.unmatched.length+'个零件号不在当前EBOM中。价格会留档，但不会新增装车条目：'+pending.reconciliation.unmatched.map(esc).join('、')+'</div>':'')+(cost&&conflicts.length?'<div class="section-title"><h2>价格差异确认 · 尚余 '+unresolved+' 项</h2><span><button class="btn btn-secondary btn-sm" data-action="resolve-all-cost-prices" data-choice="old">全部保留原价</button> <button class="btn btn-secondary btn-sm" data-action="resolve-all-cost-prices" data-choice="new">全部采用导入价</button></span></div><div class="table-wrap"><table class="data-table"><thead><tr><th>零件号</th><th>价格阶段</th><th>涉及配置</th><th>当前采用价格</th><th>文件价格</th><th>本次选择</th></tr></thead><tbody>'+choices+'</tbody></table></div>':'')+'<details><summary>查看原表预览（前5行，全部维度）</summary><div class="table-wrap"><table class="data-table"><thead><tr>'+headers.map(f=>'<th>'+esc(f.label)+'</th>').join('')+'</tr></thead><tbody>'+showSource.map(row=>'<tr>'+row.sourceFields.map(f=>'<td>'+esc(f.value)+'</td>').join('')+'</tr>').join('')+'</tbody></table></div></details><details><summary>查看本次文件相对前版的变化 · '+changes.length+' 个零件号</summary><div class="table-wrap"><table class="data-table"><tbody>'+changes.map(row=>'<tr><td>'+esc(row.partNumber)+'</td><td>'+esc(row.type)+'</td><td style="white-space:normal">'+row.fields.map(f=>esc(f.label)+'：'+esc(costValue(f.before))+' → '+esc(costValue(f.after))).join('<br>')+'</td></tr>').join('')+'</tbody></table></div></details><div class="modal-footer"><button class="btn btn-secondary" data-action="cancel-import">取消</button><button class="btn btn-primary" data-action="confirm-import"'+(preview.errors.length||unresolved||noEbom?' disabled':'')+'>确认导入并锁板存档</button></div></div></section>';
+ return '<section class="card" style="margin-bottom:14px"><div class="panel-head"><h2>'+esc(cost?'Cost BOM导入预览与价格确认':'EBOM导入预览')+'</h2><button class="btn btn-quiet btn-sm" data-action="edit-bom-mapping">调整字段设置</button></div><div class="panel-body"><div class="small muted">'+esc(pending.mappingSource || '字段已识别')+' · '+esc(pending.fileName)+' · '+preview.rows.length+'行 · 原文件将在确认导入后本机存档</div><div class="field"><label>版本标识</label><input id="importVersionLabel" value="'+esc(pending.versionLabel)+'"></div>'+(pending.parsed.sheets.length>1?'<div class="field"><label>工作表</label><select id="sheetPicker">'+pending.parsed.sheets.map((s,i)=>'<option value="'+i+'"'+(i===pending.sheetIndex?' selected':'')+'>'+esc(s.name)+'</option>').join('')+'</select></div>':'')+(cost?'<div class="field"><label>导入价格状态</label><select data-map-field="priceStatus"><option value="formal"'+(mapping.priceStatus==='formal'?' selected':'')+'>正式价</option><option value="estimate"'+(mapping.priceStatus==='estimate'?' selected':'')+'>预估价</option></select></div>':'')+'<div class="alert info">S＝标配×公共用量；O＝选配，仅展示单价；-＝不配。'+(cost?'Cost BOM仅更新价格，不改写EBOM配置结构。相同或首次补充的信息自动填入，不同价格需要选择。':'本次确认后自动锁板、保存原始文件并记录全部变化。')+'</div>'+(preview.errors.length?'<div class="alert error">'+preview.errors.slice(0,25).map(esc).join('<br>')+(preview.errors.length>25?'<br>共 '+preview.errors.length+' 项，请修正源文件后重试。':'')+'</div>':'')+(noEbom?'<div class="alert error">请先导入EBOM，Cost BOM必须按最新版EBOM生成。</div>':'')+(cost&&pending.reconciliation.unmatched.length?'<div class="alert">有'+pending.reconciliation.unmatched.length+'个零件号不在当前EBOM中。价格会留档，但不会新增装车条目：'+pending.reconciliation.unmatched.map(esc).join('、')+'</div>':'')+(cost&&conflicts.length?'<div class="section-title"><h2>价格差异确认 · 尚余 '+unresolved+' 项</h2><span><button class="btn btn-secondary btn-sm" data-action="resolve-all-cost-prices" data-choice="old">全部保留原价</button> <button class="btn btn-secondary btn-sm" data-action="resolve-all-cost-prices" data-choice="new">全部采用导入价</button></span></div><div class="table-wrap"><table class="data-table"><thead><tr><th>零件号</th><th>价格阶段</th><th>涉及配置</th><th>当前采用价格</th><th>文件价格</th><th>本次选择</th></tr></thead><tbody>'+choices+'</tbody></table></div>':'')+'<details><summary>查看原表预览（前5行，全部维度）</summary><div class="table-wrap"><table class="data-table"><thead><tr>'+headers.map(f=>'<th>'+esc(f.label)+'</th>').join('')+'</tr></thead><tbody>'+showSource.map(row=>'<tr>'+row.sourceFields.map(f=>'<td>'+esc(f.value)+'</td>').join('')+'</tr>').join('')+'</tbody></table></div></details><details><summary>查看本次文件相对前版的变化 · '+changes.length+' 个零件号</summary><div class="table-wrap"><table class="data-table"><tbody>'+changes.map(row=>'<tr><td>'+esc(row.partNumber)+'</td><td>'+esc(row.type)+'</td><td style="white-space:normal">'+row.fields.map(f=>esc(f.label)+'：'+esc(costValue(f.before))+' → '+esc(costValue(f.after))).join('<br>')+'</td></tr>').join('')+'</tbody></table></div></details><div class="modal-footer"><button class="btn btn-secondary" data-action="cancel-import">取消</button><button class="btn btn-primary" data-action="confirm-import"'+(preview.errors.length||unresolved||noEbom?' disabled':'')+'>确认导入并锁板存档</button></div></div></section>';
 }
 function renderImports(){
  const project=getActiveProject(),versions=project.imports.slice().reverse();
@@ -2703,10 +2642,7 @@ function addListeners() {
   document.addEventListener('submit', event => { onSubmit(event); });
   document.addEventListener('change', event => { onChange(event); });
   document.addEventListener('input', event => { if (event.target.matches && event.target.matches('[data-change-part-number]')) updateChangePartMatch(event.target,false); if (event.target.closest && event.target.closest('#changeForm')) updateChangeFormAutoStatus(); });
-  $('#createButton').addEventListener('click', createWorkspace);
-  $('#unlockButton').addEventListener('click', unlockWorkspace);
-  $('#openBackupButton').addEventListener('click', () => $('#backupFile').click());
-  $('#backupFile').addEventListener('change', event => openEncryptedBackup(event.target.files && event.target.files[0]));
+  $('#backupFile').addEventListener('change', event => openWorkspaceBackup(event.target.files && event.target.files[0]));
   $('#ebomFile').addEventListener('change', event => beginEbomImport(event.target.files && event.target.files[0]));
   $('#dialog').addEventListener('click', event => { if (event.target === $('#dialog')) closeDialog(); });
   window.addEventListener('beforeunload', event => {
