@@ -7,7 +7,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node scripts/check-standalone.cjs && node tests/check-bom-workflow-v3.js && node tests/check-delta.js && node tests/check-dynamic-domains.js && node tests/check-price-status.cjs",
+    "test": "node scripts/check-standalone.cjs && node tests/check-bom-workflow-v3.js && node tests/check-delta.js && node tests/check-dynamic-domains.js && node tests/check-price-status.cjs && node tests/check-dashboard-changes.cjs && node tests/check-dashboard-period.cjs && node tests/check-risks.cjs",
     "build": "node -e \"require('fs').copyFileSync('dist/cost-bom-tool.html','dist/index.html')\"",
     "test:tables": "node tests/check-table-tools.cjs"
   }
