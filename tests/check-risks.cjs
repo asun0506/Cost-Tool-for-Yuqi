@@ -38,6 +38,10 @@ const form=overrides=>{const values={partNumber:'A',description:'供应商调价
  const detailed=api.buildRiskRecord(project,detailedForm,null);assert.equal(detailed.items.length,2);assert.equal(detailed.items[0].partNumber,'');assert.equal(api.riskVariantAmount(detailed,'high'),100);assert.equal(api.riskVariantAmount(detailed,'low'),50);assert.equal(detailed.potentialIncrease,null,'Different variant amounts are not combined into one misleading number');
  assert.throws(()=>api.buildRiskRecord(project,form({riskItemIds:['one'],'riskPartName:one':'减振器','riskAmount:one:high':''}),null),/每个勾选配置/);
  project.risks.push(detailed);const detailedHtml=api.renderRisks();assert(detailedHtml.includes('前减振器')&&detailedHtml.includes('车架'));assert(detailedHtml.includes('¥100.00')&&detailedHtml.includes('¥50.00'));assert(!detailedHtml.includes('<colgroup>'),'Avoid conflicting colgroups with table tools');
+ assert(detailedHtml.includes('<div class="risk-part-list">'),'Parts share a consistent list layout');
+ const partDetails=detailedHtml.match(/<details class="risk-part-details"><summary>零件明细（2）<\/summary>([\s\S]*?)<\/details>/);
+ assert(partDetails && partDetails[1].includes('前减振器') && partDetails[1].includes('车架'),'Part details start collapsed and identify each part');
+ assert(partDetails[1].includes('+¥80.00') && partDetails[1].includes('+¥20.00') && partDetails[1].includes('+¥0.00'),'Each part keeps its own signed configuration amounts');
  api.riskDialog(detailed.riskId);assert(context.dialogBody.indexOf('风险描述')<context.dialogBody.indexOf('影响车型配置'));assert(context.dialogBody.indexOf('影响车型配置')<context.dialogBody.indexOf('进度追踪'));assert(context.dialogBody.includes('零件号（选填）'));assert(!context.dialogBody.includes('name="partNumber" required'));
  project.occurrences=[{partNumber:'MATCH',name:'自动名称',variantQuantities:{high:1,low:1}}];
  const nameInput={value:''},matchHint={textContent:''},entry={querySelector:selector=>selector==='[data-risk-part-name]'?nameInput:matchHint};api.updateRiskPartMatch({value:'MATCH',closest:()=>entry});assert.equal(nameInput.value,'自动名称');

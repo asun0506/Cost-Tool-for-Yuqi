@@ -1,0 +1,10 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const script=require('./helpers/app-script.cjs').replace(/\naddListeners\(\);\s*\ninitializeBoot\(\);\s*$/,'\n');
+const ctx=vm.createContext({console,Date,Intl,Map,Set,window:{},TextEncoder,TextDecoder,crypto:require('crypto').webcrypto});
+vm.runInContext(script+'\nglobalThis.reviewApi={mergeReviewedEbomRows};',ctx);
+const old=[{partNumber:'A',name:'旧',baseQuantity:1},{partNumber:'B',name:'保留'},{partNumber:'C',name:'移除'}];
+const incoming=[{partNumber:'A',name:'新',baseQuantity:2},{partNumber:'B',name:'变更但未选'},{partNumber:'D',name:'新增'}];
+const approved=['A','C','D'];const output=ctx.reviewApi.mergeReviewedEbomRows(old,incoming,approved);
+assert.deepStrictEqual(JSON.parse(JSON.stringify(output)),[{partNumber:'A',name:'新',baseQuantity:2},{partNumber:'B',name:'保留'},{partNumber:'D',name:'新增'}]);
+assert.strictEqual(old[0].name,'旧');assert.strictEqual(incoming[1].name,'变更但未选');
+console.log('Reviewed EBOM merge checks passed.');

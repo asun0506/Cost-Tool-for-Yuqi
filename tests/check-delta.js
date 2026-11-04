@@ -5,7 +5,7 @@ const {webcrypto}=require('crypto');
 const {TextEncoder,TextDecoder}=require('util');
 const script=require('./helpers/app-script.cjs').replace(/\naddListeners\(\);\s*\ninitializeBoot\(\);\s*$/,'\n');
 const ctx=vm.createContext({TextEncoder,TextDecoder,crypto:webcrypto,console,Date,Intl,Map,Set,Uint8Array,ArrayBuffer,btoa,atob});
-vm.runInContext(script+'\nglobalThis.api={dashboardForecast,syncChangeVariantRows,updateChangePartMatch,reviewData,renderOverview,deriveChangeStatus,changeDraftStatus,updateChangeFormAutoStatus,changeProgress,changeCostBomEntry,changePriceIsIncluded,buildChangeRecord,readMeetingScreenshot,changeAuditCopy,changeDialog,renderChanges,weeklyReport,renderReportPreview,saveChangeForm,selectEffectivePrice,summarizeVariant,reviewData,renderWeeklyVariantChanges,setState:value=>{appState=value;},setHooks:()=>{commitMutation=async(options,apply)=>{globalThis.lastEvent=options;apply();};closeDialog=()=>{};render=()=>{};showToast=message=>{globalThis.lastToast=message;};},captureDialog:()=>{openDialog=(title,body)=>{globalThis.dialogTitle=title;globalThis.dialogHtml=body;};}};',ctx);
+vm.runInContext(script+'\nglobalThis.api={dashboardForecast,changeSummaryAmount,changeVariance,changeVarianceSummary,changeOverBudgetRate,renderChangeImpact,updateChangeStatus,syncChangeVariantRows,updateChangePartMatch,reviewData,renderOverview,deriveChangeStatus,changeDraftStatus,updateChangeFormAutoStatus,changeProgress,changeCostBomEntry,changePriceIsIncluded,buildChangeRecord,readMeetingScreenshot,changeAuditCopy,changeDialog,renderChanges,weeklyReport,renderReportPreview,saveChangeForm,selectEffectivePrice,summarizeVariant,reviewData,renderWeeklyVariantChanges,setState:value=>{appState=value;},setHooks:()=>{commitMutation=async(options,apply)=>{globalThis.lastEvent=options;apply();};closeDialog=()=>{};render=()=>{};showToast=message=>{globalThis.lastToast=message;};},captureDialog:()=>{openDialog=(title,body)=>{globalThis.dialogTitle=title;globalThis.dialogHtml=body;};}};',ctx);
 const api=ctx.api;
 
 function fixture(){
@@ -23,7 +23,80 @@ const at='2026-11-02T10:00:00.000Z';
 
 (async()=>{
  let project=fixture();
+ const zeroDelta={date:'2026-11-02',budgetBasis:'unit',costBomEntry:false,variantIds:['mid'],items:[{partName:'未匹配零件',partNumber:'',variantPrices:{mid:{budget:0,finalPrice:0,quantity:null}}}]};
+ const otherDelta={date:'2026-11-02',budgetBasis:'vehicleDelta',costBomEntry:false,variantIds:['mid'],items:[{partName:'另一零件',partNumber:'',variantPrices:{mid:{budget:1.89,finalPrice:1.27,quantity:null}}}]};
+ assert.strictEqual(api.changeSummaryAmount(project,'mid',[zeroDelta,otherDelta]),1.27,'Zero unit delta needs no quantity for the summary');
+ project.changes=[zeroDelta,otherDelta];assert.strictEqual(api.dashboardForecast(project,'mid').pendingDelta,1.27);assert.strictEqual(api.dashboardForecast(project,'mid').forecastIssues.length,0);
+ zeroDelta.items[0].variantPrices.mid.finalPrice=2;assert.strictEqual(api.changeSummaryAmount(project,'mid',[zeroDelta,otherDelta]),null,'A nonzero unit delta still requires a quantity');
+ zeroDelta.items[0].variantPrices.mid.finalPrice=null;zeroDelta.items[0].variantPrices.mid.budget=null;assert.strictEqual(api.changeSummaryAmount(project,'mid',[zeroDelta,otherDelta]),null,'A missing delta remains unknown');
+ project=fixture();
+ const multi={date:'2026-11-02',budgetBasis:'unit',costBomEntry:false,variantIds:['high','mid'],meeting:{name:'决策会',date:'2026-11-02'},items:[
+  {partName:'组合开关',partNumber:'',variantPrices:{high:{budget:8,finalPrice:7,quantity:1},mid:{budget:null,finalPrice:null,quantity:null}}},
+  {partName:'座椅控制器',partNumber:'',variantPrices:{high:{budget:1.89,finalPrice:1.27,quantity:1},mid:{budget:1.89,finalPrice:1.27,quantity:1}}}
+ ]};
+ project.changes=[multi];
+ assert.strictEqual(api.changeVariance(project,multi,'high').text,'—','A total below budget is not an overrun');
+ const varianceFixture={budgetBasis:'vehicleDelta',variantIds:['high'],items:[{variantPrices:{high:{budget:80,finalPrice:128}}}]};
+ assert.strictEqual(api.changeVariance(project,varianceFixture,'high').text,'60%');
+ assert.strictEqual(api.changeVariance(project,varianceFixture,'high').overLimit,true);
+ varianceFixture.items[0].variantPrices.high.finalPrice=88;assert.strictEqual(api.changeVariance(project,varianceFixture,'high').overLimit,false,'Exactly 10% is not red');
+ varianceFixture.items[0].variantPrices.high.finalPrice=null;assert.strictEqual(api.changeVariance(project,varianceFixture,'high').text,'待谈价');
+ varianceFixture.items[0].variantPrices.high={budget:0,finalPrice:1};assert.strictEqual(api.changeVariance(project,varianceFixture,'high').text,'无法计算');
+ const summaryFixture={budgetBasis:'vehicleDelta',variantIds:['high','mid','low'],items:[{variantPrices:{high:{budget:100,finalPrice:108},mid:{budget:100,finalPrice:120},low:{budget:100,finalPrice:null}}}]};
+ let varianceSummary=api.changeVarianceSummary(project,summaryFixture);assert.strictEqual(varianceSummary.text,'超差20%');assert.strictEqual(varianceSummary.tone,'is-over-limit','Highest overrun outranks pending prices');
+ summaryFixture.items[0].variantPrices.mid.finalPrice=95;varianceSummary=api.changeVarianceSummary(project,summaryFixture);assert.strictEqual(varianceSummary.text,'超差8%');assert.strictEqual(varianceSummary.tone,'','Overrun under threshold outranks pending prices without red');
+ summaryFixture.items[0].variantPrices.high.finalPrice=95;varianceSummary=api.changeVarianceSummary(project,summaryFixture);assert.strictEqual(varianceSummary.text,'无实际价格');assert.strictEqual(varianceSummary.tone,'');
+ summaryFixture.items[0].variantPrices.low.finalPrice=100;varianceSummary=api.changeVarianceSummary(project,summaryFixture);assert.strictEqual(varianceSummary.text,'未超预算');assert.strictEqual(varianceSummary.tone,'');
+ summaryFixture.items[0].variantPrices.low={budget:0,finalPrice:1};varianceSummary=api.changeVarianceSummary(project,summaryFixture);assert.strictEqual(varianceSummary.text,'无法计算','Unknown budget must not be displayed as no overrun');
+ assert.strictEqual(api.changeOverBudgetRate(multi,{budget:80,finalPrice:128}),'+60.0%');
+ assert.strictEqual(api.changeOverBudgetRate(multi,{budget:25,finalPrice:20}),'-20.0%');
+ assert.strictEqual(api.changeOverBudgetRate(multi,{budget:-10,finalPrice:-5}),'+50.0%');
+ assert.strictEqual(api.changeOverBudgetRate(multi,{budget:0,finalPrice:5}),'—');
+ assert.strictEqual(api.changeOverBudgetRate(multi,{budget:5,finalPrice:null}),'待落地');
+ assert.strictEqual(api.changeOverBudgetRate(multi,{budget:null,finalPrice:null}),'—');
+ const impact=api.renderChangeImpact(multi,[
+  {variant:{name:'高配'},price:{budget:80,finalPrice:128}},
+  {variant:{name:'中配'},price:{budget:80,finalPrice:128}},
+  {variant:{name:'低配'},price:{budget:25,finalPrice:20}},
+  {variant:{name:'无影响'},price:{budget:null,finalPrice:null}}
+ ]);
+ assert(impact.includes('高配') && impact.includes('中配') && impact.includes('（超差60%）') && impact.includes('change-over-limit'));
+ assert(!impact.includes('+60.0%') && !impact.includes('-20.0%') && !impact.includes('无影响'));
+ const awaiting=api.renderChangeImpact(multi,[{variant:{name:'高配'},price:null},{variant:{name:'中配'},price:{budget:10,finalPrice:null}}],'negotiating');
+ assert(awaiting.includes('（待谈价）') && awaiting.includes('change-await-price') && awaiting.includes('aria-hidden="true"'));
+ assert(api.renderChangeImpact(multi,[{variant:{name:'高配'},price:{budget:100,finalPrice:110}}],'landed').includes('change-over-limit'),'10% is highlighted');
+ assert(!api.renderChangeImpact(multi,[{variant:{name:'高配'},price:{budget:100,finalPrice:100}}],'landed').includes('超差'),'Zero difference is not labeled');
+ assert(!api.renderChangeImpact(multi,[{variant:{name:'高配'},price:{budget:100,finalPrice:90}}],'landed').includes('超差'),'Negative difference is not labeled');
+ assert.strictEqual(api.changeSummaryAmount(project,'mid',[multi]),1.27,'Blank part and configuration has no impact');
+ assert.strictEqual(api.changeSummaryAmount(project,'high',[multi]),8.27);
+ assert.strictEqual(api.dashboardForecast(project,'mid').pendingDelta,1.27);
+ assert.strictEqual(api.dashboardForecast(project,'mid').forecastIssues.length,0);
+ assert.strictEqual(api.deriveChangeStatus(multi.meeting,multi.items),'landed','Blank unaffected pairs do not block status');
+ multi.items[1].variantPrices.mid.finalPrice=null;assert.strictEqual(api.changeSummaryAmount(project,'mid',[multi]),1.89,'Budget is used when final delta is missing');
+ assert.strictEqual(api.deriveChangeStatus(multi.meeting,multi.items),'negotiating','A missing final price still means in progress');
+ const ledger=api.renderChanges();
+ assert(ledger.includes('<th title="按配置汇总各零件后') && ledger.includes('超差情况'),'Variance has its own column');
+ assert(ledger.includes('待谈价') && !ledger.includes('推进中'));
+ assert(ledger.indexOf('<th>变更描述</th>')<ledger.indexOf('<th>状态</th>'));
+ assert(ledger.indexOf('<th>决策会议</th>')<ledger.indexOf('变更金额（元/车）'));
+ assert(ledger.includes('<th>零件名称</th>') && ledger.includes('新增变更'));
+ assert(ledger.includes('+¥8.27') && ledger.includes('+¥1.89'),'Per-configuration totals sum all affected parts using final or budget');
+ assert(ledger.includes('<details class="risk-part-details"><summary>零件明细（2）</summary>') && !ledger.includes('<th title="优先显示落地价差'),'Multi-part prices are collapsed beneath the totals');
+ assert(ledger.includes('高配+¥1.27（预算 ¥1.89）') && ledger.includes('中配—（预算 ¥1.89）'),'Part details distinguish final and budget prices without a positive budget sign');
+ assert(ledger.includes('--variant-count:3') && ledger.includes('aria-hidden="true"'),'Configuration columns reserve space for unaffected variants');
+ assert(!ledger.includes('金额口径：') && !ledger.includes('（超差'),'The register omits unit captions and over-budget labels');
+ assert(!ledger.includes('组合开关（未编码）'),'Uncoded parts do not add redundant labels');
+ assert(ledger.includes('data-change-status'),'The register allows manual status selection');
+ multi.items[1].variantPrices.mid.quantity=null;assert.strictEqual(api.changeSummaryAmount(project,'mid',[multi]),null,'A nonzero delta needs quantity');
+ project=fixture();
  const f=(x={})=>form({budgetBasis:'vehicleDelta',costBomEntry:'no','partNumber:item1':'','budget:item1:high':'8','finalPrice:item1:high':'5','budget:item1:mid':'2','finalPrice:item1:mid':'1.89',...x});
+ const manual=api.buildChangeRecord(project,f({manualStatus:'pending'}),null,null,at).change;
+ assert.strictEqual(api.changeProgress(project,manual),'pending','Manual status overrides automatic status');
+ const restoredAuto=api.buildChangeRecord(project,f({manualStatus:''}),manual,null,at).change;
+ assert.strictEqual(api.changeProgress(project,restoredAuto),'landed','Clearing manual selection returns to automatic determination');
+ project.changes=[manual];api.setHooks();await api.updateChangeStatus(manual.changeId,'negotiating');assert.strictEqual(api.changeProgress(project,manual),'negotiating');assert(ctx.lastEvent.note.includes('状态'));
+ await api.updateChangeStatus(manual.changeId,'auto');assert.strictEqual(api.changeProgress(project,manual),'landed');assert.strictEqual(manual.manualStatus,null);
+ project=fixture();
  const otherCategory=api.buildChangeRecord(project,f({category:'other'}),null,null,at);assert.strictEqual(otherCategory.change.category,'other');
  const domainRecord=api.buildChangeRecord(project,f({'category1:item1':'底盘','category2:item1':'车架'}),null,null,at);assert.strictEqual(domainRecord.change.items[0].category1,'底盘');assert.strictEqual(domainRecord.change.items[0].category2,'车架');
  const combinedMeeting=api.buildChangeRecord(project,f({decisionMeeting:'2026/10/26 产品决策会'}),null,null,at);
@@ -72,9 +145,10 @@ const at='2026-11-02T10:00:00.000Z';
  assert(ctx.dialogHtml.includes('<option value="other">其他</option>'),'Other is selectable');
  assert(ctx.dialogHtml.includes('决策会议') && ctx.dialogHtml.includes('例如：2026/10/26 产品决策会'));assert(!ctx.dialogHtml.includes('name="meetingDate"'));assert(ctx.dialogHtml.includes('用于 last stage 到 current stage'));
  assert(ctx.dialogHtml.includes('是否已进入 Cost BOM'));assert(!ctx.dialogHtml.includes('是否进入 Cost BOM'));assert(!ctx.dialogHtml.includes('beforePrice:'));assert(!ctx.dialogHtml.includes('变更前单价'));
+ assert(ctx.dialogHtml.includes('name="manualStatus"') && ctx.dialogHtml.includes('自动判断'),'Change dialog supports manual or automatic status');
  assert(ctx.dialogHtml.includes('data-change-domain="category1"') && ctx.dialogHtml.includes('data-change-domain="category2"'));assert(ctx.dialogHtml.includes('value="底盘"') && ctx.dialogHtml.includes('value="车架"'));
  assert(ctx.dialogHtml.includes('落地价差Δ') && ctx.dialogHtml.includes('上会预算Δ'));
- assert(ctx.dialogHtml.includes('成本变更说明') && ctx.dialogHtml.includes('placeholder="例如：全系车架：重量增加XXg"'));
+ assert(ctx.dialogHtml.includes('变更描述') && ctx.dialogHtml.includes('placeholder="例如：全系车架：重量增加XXg"'));
  assert(ctx.dialogHtml.indexOf('车型配置（多选）')<ctx.dialogHtml.indexOf('金额口径'),'Configuration selection comes first in the cost panel');
  assert(ctx.dialogHtml.indexOf('金额口径')<ctx.dialogHtml.indexOf('零件与价格'),'Cost fields follow configuration selection');
  assert(ctx.dialogHtml.includes('change-meeting-row'),'Meeting input and attachment share an aligned row');
