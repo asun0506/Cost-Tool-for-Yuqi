@@ -1,0 +1,16 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert'),{webcrypto}=require('crypto');
+const script=require('./helpers/app-script.cjs').replace(/\naddListeners\(\);\s*\ninitializeBoot\(\);\s*$/,'\n');
+const c=vm.createContext({crypto:webcrypto,console,Date,Intl,Map,Set,Uint8Array,ArrayBuffer,TextEncoder,TextDecoder});
+vm.runInContext(script+'\nglobalThis.api={changeItemAttributes,changePartEntryHtml,dashboardForecast,renderVariantDomainTable,buildChangeRecord,setState:s=>appState=s};',c);
+const p={id:'p',name:'车',variants:[{id:'h',name:'高配'}],imports:[],costImports:[],occurrences:[{partNumber:'P1',name:'大灯',variantQuantities:{h:1}}],attributes:{P1:{category1:'车身',category2:'真实领域'}},prices:[{partNumber:'P1',stage:'current',amount:100,status:'formal',recordedAt:'2020-01-01',effectiveAt:'2020-01-01'},{partNumber:'P1',stage:'target',amount:90,status:'estimate',recordedAt:'2020-01-01',effectiveAt:'2020-01-01'}],changes:[{changeId:'c',date:'2020-01-02',category:'styling',costBomEntry:false,budgetBasis:'vehicleDelta',variantIds:['h'],items:[{itemId:'i',partNumber:'P1',partName:'大灯',category1:'自选一级',category2:'错误领域',variantPrices:{h:{budget:10}}}]}]};
+c.api.setState({projects:[p],activeProjectId:'p',partMaster:{},settings:{thresholds:{}},auditEvents:[]});
+const item=p.changes[0].items[0];assert.equal(c.api.changeItemAttributes(p,item).category2,'真实领域');
+const form=c.api.changePartEntryHtml(p,item,['h']);assert.match(form,/<select name="category2:i"[^>]*disabled/);
+const summary=c.api.dashboardForecast(p,'h');assert.equal(summary.current,110);const html=c.api.renderVariantDomainTable(p,summary);assert(html.includes('真实领域'));assert(!html.includes('错误领域'));
+p.attributes.P1.category2='更新后的领域';assert.equal(c.api.changeItemAttributes(p,item).category2,'更新后的领域');assert(c.api.renderVariantDomainTable(p,c.api.dashboardForecast(p,'h')).includes('更新后的领域'));
+assert.equal(c.api.changeItemAttributes(p,{partNumber:'unknown',category2:'手工领域'}).category2,'手工领域');
+const data={changeNumber:'CR-TEST',category:'styling',costBomEntry:'no',date:'2020-01-02',reason:'变更',budgetBasis:'vehicleDelta',variantIds:['h'],itemIds:['i'],'partNumber:i':'P1','partName:i':'大灯','category2:i':'错误领域','applies:i:h':'1','budget:i:h':'10'};
+const f={get:k=>Array.isArray(data[k])?data[k][0]:data[k]??null,getAll:k=>Array.isArray(data[k])?data[k]:data[k]?[data[k]]:[],has:k=>data[k]!=null};
+assert.equal(c.api.buildChangeRecord(p,f,null,null,'2020-01-03T00:00:00Z').change.items[0].category2,'更新后的领域','保存时不允许覆盖 Cost BOM 二级领域');
+p.attributes.P1.category2='';assert.equal(c.api.changeItemAttributes(p,item).category2,'','BOM 清空领域后不得沿用旧值');
+console.log('Cost BOM domain synchronization passed.');
