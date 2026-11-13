@@ -7,7 +7,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node scripts/check-standalone.cjs && node tests/check-bom-workflow-v3.js && node tests/check-change-entry-date.cjs && node tests/check-change-domain-sync.cjs && node tests/check-review-legend.cjs && node tests/check-delta.js && node tests/check-dynamic-domains.js && node tests/check-price-status.cjs && node tests/check-dashboard-changes.cjs && node tests/check-dashboard-period.cjs && node tests/check-risks.cjs && node tests/check-bom-review.cjs && node tests/check-cost-import-review.cjs && node tests/check-bom-compare.cjs && node tests/check-page-interactions.cjs",
+    "test": "node scripts/check-standalone.cjs && node tests/check-bom-workflow-v3.js && node tests/check-change-entry-date.cjs && node tests/check-change-domain-sync.cjs && node tests/check-review-legend.cjs && node tests/check-package-name.cjs && node tests/check-bom-performance.cjs && node tests/check-delta.js && node tests/check-dynamic-domains.js && node tests/check-price-status.cjs && node tests/check-dashboard-changes.cjs && node tests/check-dashboard-period.cjs && node tests/check-risks.cjs && node tests/check-bom-review.cjs && node tests/check-cost-import-review.cjs && node tests/check-bom-compare.cjs && node tests/check-page-interactions.cjs",
     "build": "node -e \"require('fs').copyFileSync('dist/cost-bom-tool.html','dist/index.html')\"",
     "test:tables": "node tests/check-table-tools.cjs"
   }
