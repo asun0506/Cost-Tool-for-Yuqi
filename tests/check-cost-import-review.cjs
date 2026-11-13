@@ -113,3 +113,31 @@ assert.deepStrictEqual(Array.from(syncImport.exported.slice(1),row=>row[2]),['A'
 assert.strictEqual(syncImport.repeated.changes.length,0);
 assert.strictEqual(syncImport.ebomCount,2);
 assert.strictEqual(syncImport.updated.current,58);
+
+vm.runInContext(`
+  const unitProject=createProjectRecord('单位测试',['高配']);
+  const unitVariant=unitProject.variants[0].id;
+  const unitMapping={headerRow:1,mode:'fitment',partNumber:0,unit:1,baseQuantity:2,quantities:{[unitVariant]:3},targetPrice:4,nominationPrice:5,currentPrice:6};
+  const unitSheet={rows:[['料号','单位','用量','配置','目标','定点','当前'],['A','pc','1','S','2','3','4'],['A','PCS','1','S','2','3','4']]};
+  const unitCost=parseBomRows(unitProject,unitSheet,unitMapping,'cost');
+  const unitEbom=parseBomRows(unitProject,unitSheet,unitMapping,'ebom');
+  const legacy=rows=>[{...rows[0],unit:'PC'},rows[1]];
+  const different=rows=>[{...rows[0],unit:'SET'},rows[1]];
+  unitProject.occurrences=legacy(unitCost.rows);
+  globalThis.unitImportChecks={unitCost,unitEbom,units:aggregateBom(unitProject)[0].units,
+    costChanges:diffCostBom(legacy(unitCost.rows),unitCost.rows).changes,
+    ebomChanges:diffEbom(legacy(unitEbom.rows),unitEbom.rows).details,
+    realCostChanges:diffCostBom(legacy(unitCost.rows),different(unitCost.rows)).changes,
+    realEbomChanges:diffEbom(legacy(unitEbom.rows),different(unitEbom.rows)).details};
+`,ctx);
+const unitImportChecks=ctx.unitImportChecks;
+for(const parsed of [unitImportChecks.unitCost,unitImportChecks.unitEbom]){
+  assert.deepStrictEqual(Array.from(parsed.rows,row=>row.unit),['PCS','PCS']);
+  assert.strictEqual(parsed.rows[0].sourceFields[1].value,'pc');
+}
+assert.deepStrictEqual(Array.from(unitImportChecks.units),['PCS']);
+assert.strictEqual(unitImportChecks.costChanges.length,0);
+assert.strictEqual(unitImportChecks.ebomChanges.length,0);
+for(const changes of [unitImportChecks.realCostChanges,unitImportChecks.realEbomChanges]){
+  assert(changes[0].fields.some(field=>field.key==='units'));
+}

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-1s+jC2Vu4/KjokqZ8lk8siBfTrxAhtSWNsMWKCEkUz0='; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'; font-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-FUJJk1Eo4W6hC39/otmEYHWGKyUj86hiJS3f1vu/iCo='; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'; font-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'">
 <meta name="referrer" content="no-referrer">
 <title>本地 Cost BOM 成本工作台</title>
 <style>
@@ -863,6 +863,10 @@ function parseCsv(text, forcedDelimiter = null) {
   const delimiter = forcedDelimiter || candidates.sort((a, b) => countUnquotedDelimiters(first,b) - countUnquotedDelimiters(first,a))[0];
   return {sheets:[{name:'CSV 数据', rows:parseDelimited(text, delimiter)}], warnings:[]};
 }
+function normalizeBomUnit(value) {
+  const unit = String(value ?? '').trim();
+  return /^PCS?$/i.test(unit) ? 'PCS' : unit;
+}
 function normalPartNumber(value) {
   const raw = String(value == null ? '' : value).trim();
   return {value:raw, warning:typeof value === 'number' ? '数字格式零件号可能已丢失前导零' : null};
@@ -880,7 +884,8 @@ function aggregateBomBase(project, occurrences=getOccurrences(project)) {
     const row = result.get(partNumber);
     row.sourceRows.push(String(occurrence.sourceRow || ''));
     if (occurrence.name && !row.names.includes(occurrence.name)) row.names.push(occurrence.name);
-    if (occurrence.unit && !row.units.includes(occurrence.unit)) row.units.push(occurrence.unit);
+    const unit = normalizeBomUnit(occurrence.unit);
+    if (unit && !row.units.includes(unit)) row.units.push(unit);
     if (occurrence.category && !row.categories.includes(occurrence.category)) row.categories.push(occurrence.category);
     for (const [variantId, raw] of Object.entries(occurrence.variantQuantities || {})) {
       const quantity = Number(raw);
@@ -1752,7 +1757,7 @@ function parseBomRows(project,sheet,mapping,kind) {
    const raw=stage==='target'&&packageByRow.has(i)?'':readPrice(key),value=numberValue(raw);if(raw && (value==null || value<0))errors.push('第 '+(i+1)+' 行 · '+columnLabel(key)+'必须是非负数字或留空');prices[stage]=value;
   }
   excelRows.push(i+1);
-  rows.push({occurrenceId:newId(),partNumber,...(pendingPartNumber?{pendingPartNumber:true}:{}),name:bomCell(source,mapping,'description'),sourceRow:bomCell(source,mapping,'sourceRow') || String(i+1),unit:bomCell(source,mapping,'unit'),category:metadata.category1 || '',...metadata,baseQuantity,fitments,variantQuantities,prices,...(packageByRow.has(i)?{targetPackage:packageByRow.get(i)}:{}),sourceFields:header.map((label,j)=>({label:String(label || columnLetter(j)),value:String(source[j]==null?'':source[j])}))});
+  rows.push({occurrenceId:newId(),partNumber,...(pendingPartNumber?{pendingPartNumber:true}:{}),name:bomCell(source,mapping,'description'),sourceRow:bomCell(source,mapping,'sourceRow') || String(i+1),unit:normalizeBomUnit(bomCell(source,mapping,'unit')),category:metadata.category1 || '',...metadata,baseQuantity,fitments,variantQuantities,prices,...(packageByRow.has(i)?{targetPackage:packageByRow.get(i)}:{}),sourceFields:header.map((label,j)=>({label:String(label || columnLetter(j)),value:String(source[j]==null?'':source[j])}))});
  }
  if(!rows.length)errors.push('没有读取到有效零件行，请检查工作表、标题行和'+columnLabel('partNumber'));
  if(kind==='cost'){
@@ -1783,7 +1788,9 @@ function costSnapshotMap(rows){
  const map=new Map();for(const row of rows || []){
   if(!map.has(row.partNumber))map.set(row.partNumber,{partNumber:row.partNumber,pendingPartNumber:row.pendingPartNumber===true,quantities:{},names:[],units:[],metadata:[],prices:row.prices || {}});
   const item=map.get(row.partNumber);for(const [id,q]of Object.entries(row.variantQuantities || {}))item.quantities[id]=(item.quantities[id] || 0)+Number(q || 0);
-  if(!item.names.includes(row.name))item.names.push(row.name);if(!item.units.includes(row.unit))item.units.push(row.unit);
+  if(!item.names.includes(row.name))item.names.push(row.name);
+  const unit=normalizeBomUnit(row.unit);
+  if(!item.units.includes(unit))item.units.push(unit);
   const metadata=Object.fromEntries(['level','system','specification','development','bomEngineer','category1','category2','dre','commercialOwner','supplier'].map(key=>[key,row[key] || '']));
   if(!item.metadata.some(value=>canonical(value)===canonical(metadata)))item.metadata.push(metadata);
  }return map;
@@ -2037,7 +2044,8 @@ function aggregateForDiff(rows) {
     const item = map.get(pn);
     for (const [variantId, quantity] of Object.entries(row.variantQuantities || {})) item.quantities[variantId] = (item.quantities[variantId] || 0) + Number(quantity || 0);
     if (row.name && !item.names.includes(row.name)) item.names.push(row.name);
-    if (row.unit && !item.units.includes(row.unit)) item.units.push(row.unit);
+    const unit = normalizeBomUnit(row.unit);
+    if (unit && !item.units.includes(unit)) item.units.push(unit);
     if (row.category && !item.categories.includes(row.category)) item.categories.push(row.category);
     item.sourceRows.push(row.sourceRow);
   }
@@ -2879,13 +2887,13 @@ function costExportRows(project, variantId, frozenRows = null) {
     if(!row.engineering?.length)return [row];
     return row.engineering.map(item=>{
       const quantity=Number(item.variantQuantities?.[variantId] || 0);
-      return {...row,engineering:[item],sourceRows:[item.sourceRow || ''],name:item.name || row.name,units:[item.unit || ''],quantityByVariant:item.variantQuantities || {},displayFitmentByVariant:Object.fromEntries(variants.map(v=>[v.id,item.fitments?.[v.id] ?? (item.variantQuantities?.[v.id]?'S':'-')])),quantity,currentAmount:row.current?row.current.amount*quantity:null,targetAmount:row.target?row.target.amount*quantity:null};
+      return {...row,engineering:[item],sourceRows:[item.sourceRow || ''],name:item.name || row.name,units:[normalizeBomUnit(item.unit)],quantityByVariant:item.variantQuantities || {},displayFitmentByVariant:Object.fromEntries(variants.map(v=>[v.id,item.fitments?.[v.id] ?? (item.variantQuantities?.[v.id]?'S':'-')])),quantity,currentAmount:row.current?row.current.amount*quantity:null,targetAmount:row.target?row.target.amount*quantity:null};
     });
   });
   const rows=[['层级','产品系统层','零件号','零件名称','产品尺寸及状态描述','用量','单位','开发策略（新开发/扩展/借用）','应用工程师（BOM工程师）',...variants.map(v=>v.name),'目标成本（单件）','定点价格（单件）','当前价格（单件）','Gap','Gap%','Δ','Δ%','已定点供应商','一级领域','二级领域','当前配置','计入单车用量','当前扩展成本','目标扩展成本','EBOM来源行','DRE','商务','SOP价','当前价格阶段','当前价格状态','备注','价格来源']];
   for(const row of lines){
     const attrs=row.attributes || partAttributes(project,row.partNumber),gap=calculateDifference(row.current?.amount??null,row.target?.amount??null),delta=calculateDifference(row.current?.amount??null,row.nomination?.amount??null);
-    rows.push([engineeringText(row,'level'),engineeringText(row,'system'),row.pendingPartNumber?'':row.partNumber,row.name || partName(row.partNumber,row),engineeringText(row,'specification'),commonBomQuantity(row),row.units?.join('/') || '',engineeringText(row,'development'),engineeringText(row,'bomEngineer'),...variants.map(v=>row.displayFitmentByVariant?.[v.id] ?? row.fitmentByVariant?.[v.id] ?? (row.quantityByVariant?.[v.id]?'S':'-')),row.target?.amount??'',row.nomination?.amount??'',row.current?.amount??'',gap.amount??'',pct(gap.percentage),delta.amount??'',pct(delta.percentage),row.nomination?.supplier || attrs.nominationSupplier || '',attrs.category1 || '',attrs.category2 || '',variant?.name || '',row.quantity,row.currentAmount??'',row.targetAmount??'',(row.sourceRows || []).join(', '),attrs.dre || '',attrs.commercialOwner || '',row.sop?.amount??'',row.current?.stage || '',({estimate:'预估价',quotation:'报价',nominated:'正式价'})[row.current?.priceKind] || '',attrs.costRemark || '',row.current?.source || '']);
+    rows.push([engineeringText(row,'level'),engineeringText(row,'system'),row.pendingPartNumber?'':row.partNumber,row.name || partName(row.partNumber,row),engineeringText(row,'specification'),commonBomQuantity(row),row.units ? [...new Set(row.units.map(normalizeBomUnit))].join('/') : '',engineeringText(row,'development'),engineeringText(row,'bomEngineer'),...variants.map(v=>row.displayFitmentByVariant?.[v.id] ?? row.fitmentByVariant?.[v.id] ?? (row.quantityByVariant?.[v.id]?'S':'-')),row.target?.amount??'',row.nomination?.amount??'',row.current?.amount??'',gap.amount??'',pct(gap.percentage),delta.amount??'',pct(delta.percentage),row.nomination?.supplier || attrs.nominationSupplier || '',attrs.category1 || '',attrs.category2 || '',variant?.name || '',row.quantity,row.currentAmount??'',row.targetAmount??'',(row.sourceRows || []).join(', '),attrs.dre || '',attrs.commercialOwner || '',row.sop?.amount??'',row.current?.stage || '',({estimate:'预估价',quotation:'报价',nominated:'正式价'})[row.current?.priceKind] || '',attrs.costRemark || '',row.current?.source || '']);
   }
   return rows;
 }
@@ -3177,7 +3185,7 @@ async function openCreateDialog(formId, formData) {
     if (!normalized.value) return showToast('零件号不能为空。',true);
     const variantQuantities = {};
     project.variants.forEach(variant => variantQuantities[variant.id] = numberValue(data['qty_' + variant.id]) || 0);
-    const occurrence = {occurrenceId:newId(),partNumber:normalized.value,name:String(data.name || '').trim(),sourceRow:String(data.sourceRow || '手动补充'),unit:String(data.unit || '').trim(),category:'',variantQuantities};
+    const occurrence = {occurrenceId:newId(),partNumber:normalized.value,name:String(data.name || '').trim(),sourceRow:String(data.sourceRow || '手动补充'),unit:normalizeBomUnit(data.unit),category:'',variantQuantities};
     const before = {occurrenceCount:project.occurrences.length,part:clone(appState.partMaster[normalized.value] || null)};
     const masterBefore = clone(appState.partMaster[normalized.value] || null);
     const masterAfter = masterBefore || {canonicalName:occurrence.name,aliases:[]};
@@ -3930,7 +3938,7 @@ function renderMappingWizard(){
 }
 function renderLatestEbom(project,record) {
  const variants=bomVariants(project),headers=['层级','产品系统层','零件号','零件名称','产品尺寸及状态描述','用量','单位','开发策略（新开发/扩展/借用）','应用工程师（BOM工程师）',...variants.map(v=>v.name)];
- const body=(record.snapshot || []).map(row=>'<tr>'+[row.level,row.system,row.partNumber,row.name,row.specification,row.baseQuantity??Math.max(0,...Object.values(row.variantQuantities || {}).map(Number)),row.unit,row.development,row.bomEngineer,...variants.map(v=>row.fitments?.[v.id] || (row.variantQuantities?.[v.id]?'S':'-'))].map(value=>'<td>'+esc(value)+'</td>').join('')+'</tr>').join('');
+ const body=(record.snapshot || []).map(row=>'<tr>'+[row.level,row.system,row.partNumber,row.name,row.specification,row.baseQuantity??Math.max(0,...Object.values(row.variantQuantities || {}).map(Number)),normalizeBomUnit(row.unit),row.development,row.bomEngineer,...variants.map(v=>row.fitments?.[v.id] || (row.variantQuantities?.[v.id]?'S':'-'))].map(value=>'<td>'+esc(value)+'</td>').join('')+'</tr>').join('');
  return '<section class="card"><div class="panel-head" style="display:none"><h2>最新EBOM明细</h2><span class="small muted">'+esc(record.versionLabel)+' · '+(record.snapshot || []).length+' 行</span></div><div class="table-wrap"><table class="data-table"><thead><tr>'+headers.map(label=>'<th>'+esc(label)+'</th>').join('')+'</tr></thead><tbody>'+body+'</tbody></table></div></section>';
 }
 function ebomPartCount(record) {return Array.isArray(record?.snapshot)?new Set(record.snapshot.map(row=>String(row.partNumber || '').trim()).filter(Boolean)).size:null;}
@@ -4072,7 +4080,7 @@ function costPartEditDialog(partNumber){
  const field=(label,name,value,type='text')=>'<div class="field"><label>'+esc(label)+'</label><input type="'+type+'" name="'+esc(name)+'" value="'+esc(value??'')+'"'+(type==='number'?' min="0" step="any"':'')+'></div>';
  const sections=parts.map((part,i)=>{
   const configs=project.variants.map((v,j)=>{const raw=String(part.fitments?.[v.id] || (part.variantQuantities?.[v.id]?'S':'-')).toUpperCase(),selected=['S','O','-'].includes(raw)?raw:(Number(part.variantQuantities?.[v.id])?'S':'-');return '<div class="field"><label>'+esc(v.name)+'配置</label><select name="fit_'+i+'_'+j+'">'+[['S','S · 标配'],['O','O · 选配'],['-','— · 不配']].map(([k,t])=>'<option value="'+k+'"'+(k===selected?' selected':'')+'>'+t+'</option>').join('')+'</select></div>';}).join('');
-  return '<section class="change-panel"><h3 class="change-panel-title">'+(parts.length>1?'来源条目 '+(i+1):'零件信息')+'</h3><div class="form-grid">'+field('层级','level_'+i,part.level)+field('产品系统层','system_'+i,part.system)+field('零件名称','name_'+i,part.name)+field('产品尺寸及状态描述','specification_'+i,part.specification)+field('用量','baseQuantity_'+i,part.baseQuantity??Math.max(0,...Object.values(part.variantQuantities || {}).map(Number)),'number')+field('单位','unit_'+i,part.unit)+field('开发策略','development_'+i,part.development)+field('应用工程师（BOM工程师）','bomEngineer_'+i,part.bomEngineer)+configs+'</div></section>';
+  return '<section class="change-panel"><h3 class="change-panel-title">'+(parts.length>1?'来源条目 '+(i+1):'零件信息')+'</h3><div class="form-grid">'+field('层级','level_'+i,part.level)+field('产品系统层','system_'+i,part.system)+field('零件名称','name_'+i,part.name)+field('产品尺寸及状态描述','specification_'+i,part.specification)+field('用量','baseQuantity_'+i,part.baseQuantity??Math.max(0,...Object.values(part.variantQuantities || {}).map(Number)),'number')+field('单位','unit_'+i,normalizeBomUnit(part.unit))+field('开发策略','development_'+i,part.development)+field('应用工程师（BOM工程师）','bomEngineer_'+i,part.bomEngineer)+configs+'</div></section>';
  }).join('');
  const saved=project.priceStatusOverrides?.[JSON.stringify([partNumber,variant.id])],mode=saved==='formal'?summary.current?.priceKind:saved || 'auto';
  const statusOptions=[['auto','自动判断'],['estimate','预估价'],['quotation','报价'],['nominated','正式价']].map(([v,t])=>'<option value="'+v+'"'+(v===mode?' selected':'')+'>'+t+'</option>').join('');
@@ -4084,7 +4092,7 @@ async function saveCostPartEdit(formData){
  if(!variant||!raw.length||raw.length!==current.length)throw new Error('零件数据已变化，请重新打开编辑页面。');
  const fields=['level','system','name','specification','baseQuantity','unit','development','bomEngineer'],patches=[];
  raw.forEach((source,i)=>{const original=current[i],changed={},fitments={},variantQuantities={};
-  for(const key of fields){const text=String(formData.get(key+'_'+i) ?? '').trim();if(key==='name'&&!text)throw new Error('请填写零件名称。');if(key==='baseQuantity'){const value=numberValue(text);if(text===''||value==null||value<0)throw new Error('用量必须是非负数字。');if(value!==Number(source.baseQuantity??Math.max(0,...Object.values(source.variantQuantities || {}).map(Number))))changed[key]=value;}else if(text!==String(source[key] ?? ''))changed[key]=text;}
+  for(const key of fields){const text=String(formData.get(key+'_'+i) ?? '').trim();if(key==='name'&&!text)throw new Error('请填写零件名称。');if(key==='baseQuantity'){const value=numberValue(text);if(text===''||value==null||value<0)throw new Error('用量必须是非负数字。');if(value!==Number(source.baseQuantity??Math.max(0,...Object.values(source.variantQuantities || {}).map(Number))))changed[key]=value;}else if(key==='unit'){const unit=normalizeBomUnit(text);if(unit!==normalizeBomUnit(source.unit))changed.unit=unit;}else if(text!==String(source[key] ?? ''))changed[key]=text;}
   const qty=numberValue(formData.get('baseQuantity_'+i));
   project.variants.forEach((v,j)=>{const selected=String(formData.get('fit_'+i+'_'+j) || '-');if(!['S','O','-'].includes(selected))throw new Error('请选择有效的配置标记。');const normalFit=row=>{const mark=String(row.fitments?.[v.id] || '').toUpperCase();return ['S','O','-'].includes(mark)?mark:(Number(row.variantQuantities?.[v.id])?'S':'-');};const before=normalFit(original),baseline=normalFit(source);if(selected!==baseline)fitments[v.id]=selected;const q=(selected!==before || qty!==Number(original.baseQuantity??Math.max(0,...Object.values(original.variantQuantities || {}).map(Number))))?(selected==='S'?qty:0):Number(original.variantQuantities?.[v.id] || 0);if(q!==Number(source.variantQuantities?.[v.id] || 0))variantQuantities[v.id]=q;});
   if(Object.keys(changed).length||Object.keys(fitments).length||Object.keys(variantQuantities).length)patches.push({sourceRow:String(source.sourceRow || ''),ordinal:i,fields:changed,fitments,variantQuantities});
