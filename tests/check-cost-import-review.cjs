@@ -22,3 +22,42 @@ const supplierProject={...appProject,costImports:[],prices:[{partNumber:'A',vari
 const supplierKey=ctx.reviewApi.costReviewKey('attribute','A','nominationSupplier');const onlySupplier=ctx.reviewApi.createCostImportPlan(supplierProject,{rows:supplierRows,errors:[]},{...pending,mapping:supplierMapping,costSelections:{[supplierKey]:true}},'供应商确认');assert.strictEqual(onlySupplier.record.resolvedPrices.A.high.nomination.amount,6);assert.strictEqual(onlySupplier.record.resolvedPrices.A.high.nomination.supplier,'新供应商');
 const priceKey=ctx.reviewApi.costReviewKey('price','A','nomination','high');const onlyPrice=ctx.reviewApi.createCostImportPlan(supplierProject,{rows:supplierRows,errors:[]},{...pending,mapping:supplierMapping,costSelections:{[priceKey]:true}},'价格确认');assert.strictEqual(onlyPrice.record.resolvedPrices.A.high.nomination.amount,8);assert.strictEqual(onlyPrice.record.resolvedPrices.A.high.nomination.supplier,'旧供应商');
 console.log('Cost review item checks passed.');
+
+vm.runInContext(`
+  const importValidationProject = {variants:[{id:'high',name:'高配'}]};
+  const importValidationMapping = {
+    headerRow:1, mode:'fitment', partNumber:0, baseQuantity:1, quantities:{high:2},
+    targetPrice:3, nominationPrice:4, currentPrice:5, costRemark:6
+  };
+  const importValidationSheet = {
+    name:'成本明细',
+    rows:[
+      ['零件号','用量','高配','目标成本','定点成本','1030单价','差异分析'],
+      ['A','1','S','10','11','12','涨价'],
+      ['A','1','S','10','11','13',''],
+      ['B','','错误标记','待报价','','',''],
+      ['','1','S','','','','']
+    ]
+  };
+  let validationDialog;
+  openDialog = (title, body, subtitle) => { validationDialog = {title,body,subtitle}; };
+  renderPage = () => {};
+  mappingFromControls = () => {};
+  refreshBomPreview = () => {
+    pendingImport.preview = parseBomRows(importValidationProject, getCurrentSheet(), pendingImport.mapping, 'cost');
+  };
+  pendingImport = {parsed:{sheets:[importValidationSheet]}, sheetIndex:0, mapping:importValidationMapping, mappingOpen:true};
+  previewImport();
+  globalThis.validationFailure = {dialog:validationDialog,mappingOpen:pendingImport.mappingOpen};
+  importValidationSheet.rows.length = 2;
+  validationDialog = null;
+  previewImport();
+  globalThis.validationSuccess = {dialog:validationDialog,mappingOpen:pendingImport.mappingOpen};
+`,ctx);
+assert(ctx.validationFailure.dialog, '校验失败时必须弹窗');
+assert.strictEqual(ctx.validationFailure.mappingOpen,true);
+for (const detail of ['成本明细','A 列','B 列','C 列','D 列','F 列','G 列','1030单价','第 5 行','第 2、3 行']) {
+  assert(JSON.stringify(ctx.validationFailure.dialog).includes(detail), '弹窗缺少 '+detail);
+}
+assert.strictEqual(ctx.validationSuccess.dialog,null);
+assert.strictEqual(ctx.validationSuccess.mappingOpen,false);

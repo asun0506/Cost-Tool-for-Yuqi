@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-h3k/ktoBeRrTHSbFNQUgikoYxc3+SwOqsTKgUR8gXZ0='; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'; font-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Xfgko7Qrl81A4VDBBm3cvfhZoY2sv5PXzsQinTirfsg='; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'; font-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'">
 <meta name="referrer" content="no-referrer">
 <title>本地 Cost BOM 成本工作台</title>
 <style>
@@ -1672,12 +1672,24 @@ function renderTargetPackages(groups,showActual=false,project){
  return disclosure+(showActual?'':'<div class="hint">每个有标配成员的配置按整组预算计入一次。</div>')+'<div class="table-wrap"><table class="data-table"><thead><tr><th>源表范围</th>'+(showActual?'<th>零件包名称</th>':'')+'<th>零件号</th><th>单车目标</th>'+(showActual?'<th>当前合计</th><th>Gap</th><th>Gap%</th>':'')+'</tr></thead><tbody>'+groups.map(group=>'<tr><td>'+esc(group.range)+'</td>'+(showActual?nameCell(group):'')+'<td>'+esc(group.partNumbers.join('、'))+'</td><td>'+esc(money(group.amount))+'</td>'+(showActual?'<td>'+esc(money(group.current))+'</td><td>'+esc(money(group.gap.amount))+'</td><td>'+esc(pct(group.gap.percentage))+'</td>':'')+'</tr>').join('')+'</tbody></table></div>'+(showActual?'</div>':'</details>');
 }
 function parseBomRows(project,sheet,mapping,kind) {
- const rows=[],errors=[],issues=[];let numericLikeCount=0;
- if(mapping.partNumber==null || mapping.partNumber==='') errors.push('必须映射零件号列');
- for(const variant of project.variants) if(mapping.quantities[variant.id]==null || mapping.quantities[variant.id]==='') errors.push('必须映射'+variant.name+'配置列');
- if(mapping.mode==='fitment' && (mapping.baseQuantity==null || mapping.baseQuantity==='')) errors.push('配置标记模式必须映射公共用量列');
- if(kind==='cost' && ['targetPrice','nominationPrice','currentPrice'].some(key=>mapping[key]==null || mapping[key]==='')) errors.push('Cost BOM必须映射目标、定点和当前价格列（单元格可留空）');
+ const rows=[],errors=[],issues=[],excelRows=[];let numericLikeCount=0;
  const header=sheet.rows[mapping.headerRow-1] || [];
+ const fieldLabels=new Map(BOM_FIELDS.map(([key,label])=>[key,label]));
+ const columnLabel=(key,col=mapping[key],label=fieldLabels.get(key) || '零件号')=>{
+  if(col==null || col==='')return label+'（未映射）';
+  const heading=String(header[col] || '').trim();
+  return label+'（'+columnLetter(Number(col))+' 列'+(heading?' · '+heading:'')+'）';
+ };
+ if(mapping.partNumber==null || mapping.partNumber==='') errors.push(columnLabel('partNumber')+'必须选择源列');
+ for(const variant of project.variants){
+  const col=mapping.quantities[variant.id];
+  if(col==null || col==='')errors.push(columnLabel(null,col,variant.name+'配置')+'必须选择源列');
+ }
+ if(mapping.mode==='fitment' && (mapping.baseQuantity==null || mapping.baseQuantity==='')) errors.push(columnLabel('baseQuantity')+'必须选择公共用量列');
+ const priceFields=[['targetPrice','target'],['nominationPrice','nomination'],['currentPrice','current'],['sopPrice','sop']];
+ if(kind==='cost')for(const [key] of priceFields.slice(0,3)){
+  if(mapping[key]==null || mapping[key]==='')errors.push(columnLabel(key)+'必须选择源列，单元格可留空');
+ }
  const packageByRow=new Map();
  if(kind==='cost' && mapping.targetPrice!=null && mapping.targetPrice!==''){
   const column=Number(mapping.targetPrice);
@@ -1695,33 +1707,53 @@ function parseBomRows(project,sheet,mapping,kind) {
  for(let i=mapping.headerRow;i<sheet.rows.length;i++){
   const source=sheet.rows[i];if(!source.some(cell=>String(cell==null?'':cell).trim()))continue;
   const partNumber=normalPartNumber(bomCell(source,mapping,'partNumber')).value;
-  if(!partNumber){errors.push('第'+(i+1)+'行缺少零件号');continue;}
+  if(!partNumber){errors.push('第 '+(i+1)+' 行 · '+columnLabel('partNumber')+'缺少零件号');continue;}
   if(/^\d+$/.test(partNumber))numericLikeCount++;
   const rawQuantity=bomCell(source,mapping,'baseQuantity'),baseQuantity=numberValue(rawQuantity),variantQuantities={},fitments={};
-  if(mapping.mode==='fitment' && (baseQuantity==null || baseQuantity<0))errors.push('第'+(i+1)+'行公共用量必须是非负数');
+  if(mapping.mode==='fitment' && (baseQuantity==null || baseQuantity<0))errors.push('第 '+(i+1)+' 行 · '+columnLabel('baseQuantity')+'必须是非负数');
   for(const variant of project.variants){
    const col=mapping.quantities[variant.id];const raw=col==null || col===''?'':String(source[col]==null?'':source[col]).trim();fitments[variant.id]=raw;
    if(mapping.mode==='quantity'){
-    const value=raw===''?0:numberValue(raw);if(value==null || value<0)errors.push('第'+(i+1)+'行'+variant.name+'用量不是非负数');variantQuantities[variant.id]=value==null?0:value;
+    const value=raw===''?0:numberValue(raw);if(value==null || value<0)errors.push('第 '+(i+1)+' 行 · '+columnLabel(null,col,variant.name+'用量')+'必须是非负数');variantQuantities[variant.id]=value==null?0:value;
    }else{
     const token=raw.toUpperCase();let fitted=false;
     if(['S'].includes(token))fitted=true;
     else if(['','-','—','/','N','NO','否','无','不适用','0'].includes(token))fitted=false;
     else if(['O','选装','OPTION'].includes(token)){fitted=false;}
-    else errors.push('第'+(i+1)+'行'+variant.name+'配置标记无法识别：'+raw);
+    else errors.push('第 '+(i+1)+' 行 · '+columnLabel(null,col,variant.name+'配置')+'无法识别标记「'+raw+'」');
     variantQuantities[variant.id]=fitted && baseQuantity!=null?baseQuantity:0;
    }
   }
   const metadata={};for(const [key] of BOM_FIELDS)metadata[key]=bomCell(source,mapping,key);
   const prices={};
-  if(kind==='cost')for(const [key,stage] of [['targetPrice','target'],['nominationPrice','nomination'],['currentPrice','current'],['sopPrice','sop']]){
-   const raw=stage==='target'&&packageByRow.has(i)?'':bomCell(source,mapping,key),value=numberValue(raw);if(raw && (value==null || value<0))errors.push('第'+(i+1)+'行'+key+'必须为非负数字');prices[stage]=value;
+  if(kind==='cost')for(const [key,stage] of priceFields){
+   const raw=stage==='target'&&packageByRow.has(i)?'':bomCell(source,mapping,key),value=numberValue(raw);if(raw && (value==null || value<0))errors.push('第 '+(i+1)+' 行 · '+columnLabel(key)+'必须是非负数字或留空');prices[stage]=value;
   }
+  excelRows.push(i+1);
   rows.push({occurrenceId:newId(),partNumber,name:bomCell(source,mapping,'description'),sourceRow:bomCell(source,mapping,'sourceRow') || String(i+1),unit:bomCell(source,mapping,'unit'),category:metadata.category1 || '',...metadata,baseQuantity,fitments,variantQuantities,prices,...(packageByRow.has(i)?{targetPackage:packageByRow.get(i)}:{}),sourceFields:header.map((label,j)=>({label:String(label || columnLetter(j)),value:String(source[j]==null?'':source[j])}))});
  }
- if(!rows.length)errors.push('没有读取到有效零件行');
+ if(!rows.length)errors.push('没有读取到有效零件行，请检查工作表、标题行和'+columnLabel('partNumber'));
  if(kind==='cost'){
-  const seen=new Map();for(const row of rows){const key=canonical(row.prices);if(seen.has(row.partNumber)&&seen.get(row.partNumber).packageRange!==row.targetPackage?.range)errors.push('零件号'+row.partNumber+'有多个目标成本范围，请统一后导入');if(seen.has(row.partNumber)&&seen.get(row.partNumber).prices!==key)errors.push('零件号'+row.partNumber+'重复行价格不一致，不能自动合并');if(seen.has(row.partNumber)&&mapping.costRemark!=null&&mapping.costRemark!==''&&seen.get(row.partNumber).remark!==row.costRemark)errors.push('零件号'+row.partNumber+'重复行备注不一致，请统一后导入');seen.set(row.partNumber,{prices:key,remark:row.costRemark,packageRange:row.targetPackage?.range});}
+  const seen=new Map();
+  for(const [index,row] of rows.entries()){
+   const previous=seen.get(row.partNumber);
+   if(!previous){
+    seen.set(row.partNumber,{row,excelRow:excelRows[index]});
+    continue;
+   }
+   const location='第 '+previous.excelRow+'、'+excelRows[index]+' 行 · 零件号 '+row.partNumber+' · ';
+   if(previous.row.targetPackage?.range!==row.targetPackage?.range){
+    errors.push(location+columnLabel('targetPrice')+'的打包范围不一致，请核对合并单元格');
+   }
+   for(const [key,stage] of priceFields){
+    if(previous.row.prices[stage]!==row.prices[stage]){
+     errors.push(location+columnLabel(key)+'的重复行价格不一致，请统一后导入');
+    }
+   }
+   if(mapping.costRemark!=null && mapping.costRemark!=='' && previous.row.costRemark!==row.costRemark){
+    errors.push(location+columnLabel('costRemark')+'的重复行备注不一致，请统一备注或取消映射');
+   }
+  }
  }
  return {rows,issues,errors:Array.from(new Set(errors)),numericLikeCount};
 }
@@ -3788,7 +3820,23 @@ async function beginEbomImport(file){
   if(parsed.warnings?.length)showToast(parsed.warnings.join('；'),true);
  }catch(error){showToast(error.message || '无法读取文件',true);}
 }
-function previewImport(){if(!pendingImport)return;mappingFromControls();pendingImport.priceChoices={};refreshBomPreview();if(!pendingImport.preview.errors.length)pendingImport.mappingOpen=false;renderPage();}
+function previewImport(){
+ if(!pendingImport)return;
+ mappingFromControls();
+ pendingImport.priceChoices={};
+ refreshBomPreview();
+ const {errors}=pendingImport.preview;
+ pendingImport.mappingOpen=errors.length>0;
+ renderPage();
+ if(!errors.length)return;
+ const limit=25;
+ const summary=errors.length>limit?'共 '+errors.length+' 项，先显示前 '+limit+' 项。':'共 '+errors.length+' 项。';
+ openDialog('BOM 导入校验失败',
+  '<p class="hint">'+summary+' 请核对以下源列或单元格后重新预览。</p>'+
+  '<ol>'+errors.slice(0,limit).map(error=>'<li>'+esc(error)+'</li>').join('')+'</ol>'+
+  '<div class="modal-footer"><button type="button" class="btn btn-primary" data-action="close-dialog">返回修改</button></div>',
+  '工作表 · '+getCurrentSheet().name);
+}
 async function performBomImport(){
  const pending=pendingImport;if(!pending?.preview)return;
  pending.versionDate=$('#importVersionDate')?.value ?? pending.versionDate;
