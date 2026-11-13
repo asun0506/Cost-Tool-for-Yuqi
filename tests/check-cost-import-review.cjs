@@ -56,8 +56,60 @@ vm.runInContext(`
 `,ctx);
 assert(ctx.validationFailure.dialog, '校验失败时必须弹窗');
 assert.strictEqual(ctx.validationFailure.mappingOpen,true);
-for (const detail of ['成本明细','A 列','B 列','C 列','D 列','F 列','G 列','1030单价','第 5 行','第 2、3 行']) {
+for (const detail of ['成本明细','B 列','C 列','D 列','F 列','G 列','1030单价','第 4 行','第 2、3 行']) {
   assert(JSON.stringify(ctx.validationFailure.dialog).includes(detail), '弹窗缺少 '+detail);
 }
 assert.strictEqual(ctx.validationSuccess.dialog,null);
 assert.strictEqual(ctx.validationSuccess.mappingOpen,false);
+
+vm.runInContext(`
+  const syncProject = createProjectRecord('导入规则测试',['高配','低配']);
+  const [high,low] = syncProject.variants.map(v=>v.id);
+  const mapping = {headerRow:1,mode:'fitment',partNumber:0,description:1,baseQuantity:2,
+    quantities:{[high]:3,[low]:4},targetPrice:5,nominationPrice:6,currentPrice:7,sopPrice:8};
+  const sheet = {name:'明细',rows:[
+    ['料号','名称','用量','高配','低配','目标','定点','当前','SOP'],
+    ['A','已编码','1','S','S','2','3','4','5'],
+    ['','待补件','2','S','-',' #N/A ','#n/a','15','#N/A'],
+    ['','待补件','3','S','S','6','7','8','9'],
+    ['','说明','','','','#N/A','','',''],
+    ['ONLY-COST','未匹配','1','S','S','50','50','50','50']
+  ]};
+  const ebom = parseBomRows(syncProject,{...sheet,rows:sheet.rows.slice(0,2)},mapping,'ebom');
+  syncProject.imports.push({importId:'e1',versionDate:'2026-01-01',snapshot:ebom.rows});
+  const parse = () => parseBomRows(syncProject,sheet,mapping,'cost');
+  const initial = parse();
+  globalThis.syncImport = {errors:initial.errors};
+  if(!initial.errors.length){
+    const apply = preview => {
+      const reconciliation=buildCostReconciliation(syncProject,preview.rows,mapping);
+      const review=buildCostReviewItems(syncProject,reconciliation,preview.rows,mapping);
+      const costSelections=Object.fromEntries(review.map(item=>[item.key,true]));
+      const plan=createCostImportPlan(syncProject,preview,{mapping,costSelections,versionDate:'2026-02-01'},'测试');
+      applyCostImportPlan(syncProject,plan);
+      return {reconciliation,plan};
+    };
+    const first=apply(initial);
+    const summary=summarizeVariant(syncProject,high);
+    const exported=costExportRows(syncProject,high);
+    const repeated=diffCostBom(initial.rows,parse().rows);
+    sheet.rows[2][0]='B';
+    syncProject.imports.push({importId:'e2',versionDate:'2026-01-15',snapshot:parseBomRows(syncProject,{...sheet,rows:sheet.rows.slice(0,3)},mapping,'ebom').rows});
+    apply(parse());
+    globalThis.syncImport={errors:initial.errors,initial,first,summary,exported,repeated,ebomCount:getOccurrences(syncProject).length,lowSummary:summarizeVariant(syncProject,low),updated:summarizeVariant(syncProject,high)};
+  }
+`,ctx);
+const syncImport=ctx.syncImport;
+assert.deepStrictEqual(Array.from(syncImport.errors),[]);
+assert.strictEqual(syncImport.initial.rows.length,4);
+assert.strictEqual(syncImport.initial.rows[1].prices.target,null);
+assert.strictEqual(syncImport.initial.rows[1].prices.nomination,null);
+assert.strictEqual(syncImport.initial.rows[1].prices.sop,null);
+assert.deepStrictEqual(Array.from(syncImport.first.reconciliation.unmatched),['ONLY-COST']);
+assert.strictEqual(syncImport.first.plan.record.structureSnapshot.length,3);
+assert.strictEqual(syncImport.summary.current,58);
+assert.strictEqual(syncImport.lowSummary.current,28);
+assert.deepStrictEqual(Array.from(syncImport.exported.slice(1),row=>row[2]),['A','','']);
+assert.strictEqual(syncImport.repeated.changes.length,0);
+assert.strictEqual(syncImport.ebomCount,2);
+assert.strictEqual(syncImport.updated.current,58);

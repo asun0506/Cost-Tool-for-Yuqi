@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Xfgko7Qrl81A4VDBBm3cvfhZoY2sv5PXzsQinTirfsg='; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'; font-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-1s+jC2Vu4/KjokqZ8lk8siBfTrxAhtSWNsMWKCEkUz0='; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'; font-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'">
 <meta name="referrer" content="no-referrer">
 <title>本地 Cost BOM 成本工作台</title>
 <style>
@@ -780,9 +780,11 @@ async function parseXlsx(buffer) {
   }
   const sheetNodes = xmlText(wb, 'sheet');
   if (!sheetNodes.length) throw new Error('工作簿中没有工作表。');
+  const visibleSheetNodes = sheetNodes.filter(node => !['hidden', 'veryHidden'].includes(node.getAttribute('state')));
+  if (!visibleSheetNodes.length) throw new Error('工作簿中没有可见工作表。请在 Excel 或 WPS 中取消隐藏后重新导入。');
   const sheets = [];
   const warnings = [];
-  for (const sheetNode of sheetNodes) {
+  for (const sheetNode of visibleSheetNodes) {
     const relId = sheetNode.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id') || sheetNode.getAttribute('r:id');
     let target = relById.get(relId);
     if (!target) continue;
@@ -874,7 +876,7 @@ function aggregateBomBase(project, occurrences=getOccurrences(project)) {
   for (const occurrence of occurrences) {
     const partNumber = String(occurrence.partNumber || '').trim();
     if (!partNumber) continue;
-    if (!result.has(partNumber)) result.set(partNumber, {partNumber, quantityByVariant:{}, sourceRows:[], names:[], units:[], categories:[]});
+    if (!result.has(partNumber)) result.set(partNumber, {partNumber, pendingPartNumber:occurrence.pendingPartNumber===true, quantityByVariant:{}, sourceRows:[], names:[], units:[], categories:[]});
     const row = result.get(partNumber);
     row.sourceRows.push(String(occurrence.sourceRow || ''));
     if (occurrence.name && !row.names.includes(occurrence.name)) row.names.push(occurrence.name);
@@ -1055,6 +1057,9 @@ function sortedPartRows(summary, sortBy, direction) {
 function stageSummary(record) {
   if (!record) return '<span class="muted">—</span>';
   return '<span class="money">' + esc(money(record.amount, record.currency)) + '</span><div style="margin-top:4px">' + statusBadge(record.status,record.priceKind) + '</div>';
+}
+function costPartNumberLabel(row) {
+  return row.pendingPartNumber ? '待补零件号' : row.partNumber;
 }
 function partName(partNumber, row) {
   const master = appState.partMaster[partNumber];
@@ -1690,6 +1695,11 @@ function parseBomRows(project,sheet,mapping,kind) {
  if(kind==='cost')for(const [key] of priceFields.slice(0,3)){
   if(mapping[key]==null || mapping[key]==='')errors.push(columnLabel(key)+'必须选择源列，单元格可留空');
  }
+ const sourcePartNumbers=new Set();
+ if(kind==='cost')for(let i=mapping.headerRow;i<sheet.rows.length;i++){
+  const value=normalPartNumber(bomCell(sheet.rows[i],mapping,'partNumber')).value;
+  if(value)sourcePartNumbers.add(value);
+ }
  const packageByRow=new Map();
  if(kind==='cost' && mapping.targetPrice!=null && mapping.targetPrice!==''){
   const column=Number(mapping.targetPrice);
@@ -1706,8 +1716,20 @@ function parseBomRows(project,sheet,mapping,kind) {
  }
  for(let i=mapping.headerRow;i<sheet.rows.length;i++){
   const source=sheet.rows[i];if(!source.some(cell=>String(cell==null?'':cell).trim()))continue;
-  const partNumber=normalPartNumber(bomCell(source,mapping,'partNumber')).value;
-  if(!partNumber){errors.push('第 '+(i+1)+' 行 · '+columnLabel('partNumber')+'缺少零件号');continue;}
+  const readPrice=key=>{
+   const value=bomCell(source,mapping,key);
+   return value.toUpperCase()==='#N/A'?'':value;
+  };
+  let partNumber=normalPartNumber(bomCell(source,mapping,'partNumber')).value;
+  const pendingPartNumber=!partNumber && kind==='cost';
+  if(pendingPartNumber){
+   if(!packageByRow.has(i) && !priceFields.some(([key])=>readPrice(key)!==''))continue;
+   partNumber='@pending-cost-part:'+JSON.stringify([sheet.name,i+1]);
+   while(sourcePartNumbers.has(partNumber))partNumber+=':';
+  }else if(!partNumber){
+   errors.push('第 '+(i+1)+' 行 · '+columnLabel('partNumber')+'缺少零件号');
+   continue;
+  }
   if(/^\d+$/.test(partNumber))numericLikeCount++;
   const rawQuantity=bomCell(source,mapping,'baseQuantity'),baseQuantity=numberValue(rawQuantity),variantQuantities={},fitments={};
   if(mapping.mode==='fitment' && (baseQuantity==null || baseQuantity<0))errors.push('第 '+(i+1)+' 行 · '+columnLabel('baseQuantity')+'必须是非负数');
@@ -1727,10 +1749,10 @@ function parseBomRows(project,sheet,mapping,kind) {
   const metadata={};for(const [key] of BOM_FIELDS)metadata[key]=bomCell(source,mapping,key);
   const prices={};
   if(kind==='cost')for(const [key,stage] of priceFields){
-   const raw=stage==='target'&&packageByRow.has(i)?'':bomCell(source,mapping,key),value=numberValue(raw);if(raw && (value==null || value<0))errors.push('第 '+(i+1)+' 行 · '+columnLabel(key)+'必须是非负数字或留空');prices[stage]=value;
+   const raw=stage==='target'&&packageByRow.has(i)?'':readPrice(key),value=numberValue(raw);if(raw && (value==null || value<0))errors.push('第 '+(i+1)+' 行 · '+columnLabel(key)+'必须是非负数字或留空');prices[stage]=value;
   }
   excelRows.push(i+1);
-  rows.push({occurrenceId:newId(),partNumber,name:bomCell(source,mapping,'description'),sourceRow:bomCell(source,mapping,'sourceRow') || String(i+1),unit:bomCell(source,mapping,'unit'),category:metadata.category1 || '',...metadata,baseQuantity,fitments,variantQuantities,prices,...(packageByRow.has(i)?{targetPackage:packageByRow.get(i)}:{}),sourceFields:header.map((label,j)=>({label:String(label || columnLetter(j)),value:String(source[j]==null?'':source[j])}))});
+  rows.push({occurrenceId:newId(),partNumber,...(pendingPartNumber?{pendingPartNumber:true}:{}),name:bomCell(source,mapping,'description'),sourceRow:bomCell(source,mapping,'sourceRow') || String(i+1),unit:bomCell(source,mapping,'unit'),category:metadata.category1 || '',...metadata,baseQuantity,fitments,variantQuantities,prices,...(packageByRow.has(i)?{targetPackage:packageByRow.get(i)}:{}),sourceFields:header.map((label,j)=>({label:String(label || columnLetter(j)),value:String(source[j]==null?'':source[j])}))});
  }
  if(!rows.length)errors.push('没有读取到有效零件行，请检查工作表、标题行和'+columnLabel('partNumber'));
  if(kind==='cost'){
@@ -1759,7 +1781,7 @@ function parseBomRows(project,sheet,mapping,kind) {
 }
 function costSnapshotMap(rows){
  const map=new Map();for(const row of rows || []){
-  if(!map.has(row.partNumber))map.set(row.partNumber,{partNumber:row.partNumber,quantities:{},names:[],units:[],metadata:[],prices:row.prices || {}});
+  if(!map.has(row.partNumber))map.set(row.partNumber,{partNumber:row.partNumber,pendingPartNumber:row.pendingPartNumber===true,quantities:{},names:[],units:[],metadata:[],prices:row.prices || {}});
   const item=map.get(row.partNumber);for(const [id,q]of Object.entries(row.variantQuantities || {}))item.quantities[id]=(item.quantities[id] || 0)+Number(q || 0);
   if(!item.names.includes(row.name))item.names.push(row.name);if(!item.units.includes(row.unit))item.units.push(row.unit);
   const metadata=Object.fromEntries(['level','system','specification','development','bomEngineer','category1','category2','dre','commercialOwner','supplier'].map(key=>[key,row[key] || '']));
@@ -2863,7 +2885,7 @@ function costExportRows(project, variantId, frozenRows = null) {
   const rows=[['层级','产品系统层','零件号','零件名称','产品尺寸及状态描述','用量','单位','开发策略（新开发/扩展/借用）','应用工程师（BOM工程师）',...variants.map(v=>v.name),'目标成本（单件）','定点价格（单件）','当前价格（单件）','Gap','Gap%','Δ','Δ%','已定点供应商','一级领域','二级领域','当前配置','计入单车用量','当前扩展成本','目标扩展成本','EBOM来源行','DRE','商务','SOP价','当前价格阶段','当前价格状态','备注','价格来源']];
   for(const row of lines){
     const attrs=row.attributes || partAttributes(project,row.partNumber),gap=calculateDifference(row.current?.amount??null,row.target?.amount??null),delta=calculateDifference(row.current?.amount??null,row.nomination?.amount??null);
-    rows.push([engineeringText(row,'level'),engineeringText(row,'system'),row.partNumber,row.name || partName(row.partNumber,row),engineeringText(row,'specification'),commonBomQuantity(row),row.units?.join('/') || '',engineeringText(row,'development'),engineeringText(row,'bomEngineer'),...variants.map(v=>row.displayFitmentByVariant?.[v.id] ?? row.fitmentByVariant?.[v.id] ?? (row.quantityByVariant?.[v.id]?'S':'-')),row.target?.amount??'',row.nomination?.amount??'',row.current?.amount??'',gap.amount??'',pct(gap.percentage),delta.amount??'',pct(delta.percentage),row.nomination?.supplier || attrs.nominationSupplier || '',attrs.category1 || '',attrs.category2 || '',variant?.name || '',row.quantity,row.currentAmount??'',row.targetAmount??'',(row.sourceRows || []).join(', '),attrs.dre || '',attrs.commercialOwner || '',row.sop?.amount??'',row.current?.stage || '',({estimate:'预估价',quotation:'报价',nominated:'正式价'})[row.current?.priceKind] || '',attrs.costRemark || '',row.current?.source || '']);
+    rows.push([engineeringText(row,'level'),engineeringText(row,'system'),row.pendingPartNumber?'':row.partNumber,row.name || partName(row.partNumber,row),engineeringText(row,'specification'),commonBomQuantity(row),row.units?.join('/') || '',engineeringText(row,'development'),engineeringText(row,'bomEngineer'),...variants.map(v=>row.displayFitmentByVariant?.[v.id] ?? row.fitmentByVariant?.[v.id] ?? (row.quantityByVariant?.[v.id]?'S':'-')),row.target?.amount??'',row.nomination?.amount??'',row.current?.amount??'',gap.amount??'',pct(gap.percentage),delta.amount??'',pct(delta.percentage),row.nomination?.supplier || attrs.nominationSupplier || '',attrs.category1 || '',attrs.category2 || '',variant?.name || '',row.quantity,row.currentAmount??'',row.targetAmount??'',(row.sourceRows || []).join(', '),attrs.dre || '',attrs.commercialOwner || '',row.sop?.amount??'',row.current?.stage || '',({estimate:'预估价',quotation:'报价',nominated:'正式价'})[row.current?.priceKind] || '',attrs.costRemark || '',row.current?.source || '']);
   }
   return rows;
 }
@@ -3593,8 +3615,13 @@ function costDeletedParts(project,variantId){
  const deleted=new Map();for(const item of project.costPartDeletions || [])if(item.variantId===variantId)deleted.set(item.partNumber,item.deleted);
  return deleted;
 }
+function costStructureRows(project, costRows=latestBomRecord(project.costImports)?.snapshot || []){
+ const ebomRows=getOccurrences(project);
+ const partNumbers=new Set(ebomRows.map(row=>row.partNumber));
+ return ebomRows.concat(costRows.filter(row=>row.pendingPartNumber && !partNumbers.has(row.partNumber)));
+}
 function costOccurrences(project,ignoreDeletions=false){
- const source=clone(getOccurrences(project));
+ const source=clone(costStructureRows(project));
  const edits=new Map();for(const edit of project.costPartEdits || [])edits.set(edit.partNumber,edit);
   const deletions=ignoreDeletions ? [] : (project.variants || []).map(variant=>[variant.id,costDeletedParts(project,variant.id)]);
   const byPart=groupOccurrencesByPart(source);
@@ -3649,7 +3676,7 @@ function engineeringChanges(beforeRows,afterRows,withPrices){
    for(const [key,label]of [['names','零件名称'],['units','单位'],['quantities','标配装车用量'],['fitments','S/O/-配置标记'],['baseQuantities','公共用量'],['metadata','层级/系统/尺寸/开发策略/工程师/分类/供应商']])if(canonical(old[key])!==canonical(next[key]))fields.push({key,label,before:old[key],after:next[key]});
    if(withPrices)for(const [stage,label]of [['target','目标单价'],['nomination','定点单价'],['current','当前单价'],['sop','SOP单价']])if((old.prices[stage]??null)!==(next.prices[stage]??null))fields.push({key:'price:'+stage,label,before:old.prices[stage]??null,after:next.prices[stage]??null});
   }
-  if(!old||!next||fields.length)changes.push({diffId:newId(),partNumber:number,type:!old?'新增':!next?'移除':'变更',before:old,after:next,fields});
+  if(!old||!next||fields.length)changes.push({diffId:newId(),partNumber:number,pendingPartNumber:(next || old)?.pendingPartNumber===true,type:!old?'新增':!next?'移除':'变更',before:old,after:next,fields});
  }
  return changes;
 }
@@ -3721,7 +3748,7 @@ function refreshBomPreview(){
  const dated=bomProjectAt(project,new Date(bomVersionDate(pending.versionDate)+'T23:59:59.999').getTime());
  const versions=cost?dated.costImports:dated.imports,previous=latestBomRecord(versions);
  pending.preview={...result,diff:cost?diffCostBom(previous?.snapshot || [],result.rows):diffEbom(previous?.snapshot || [],result.rows)};
- if(cost){pending.reconciliation=buildCostReconciliation(dated,result.rows,pending.mapping);pending.costStructureDifferences=engineeringChanges(getOccurrences(dated),result.rows,false).map(row=>({...row,fields:row.fields.filter(field=>['names','units','quantities','fitments','baseQuantities'].includes(field.key))})).filter(row=>row.type!=='变更'||row.fields.length);pending.costReviewItems=buildCostReviewItems(dated,pending.reconciliation,result.rows,pending.mapping);pending.costSelections=Object.create(null);}else {pending.ebomImpact=engineeringChanges(getOccurrences(dated),result.rows,false);pending.ebomSelections=Object.create(null);}
+ if(cost){pending.reconciliation=buildCostReconciliation(dated,result.rows,pending.mapping);pending.costStructureDifferences=engineeringChanges(getOccurrences(dated),result.rows.filter(row=>!row.pendingPartNumber),false).map(row=>({...row,fields:row.fields.filter(field=>['names','units','quantities','fitments','baseQuantities'].includes(field.key))})).filter(row=>row.type!=='变更'||row.fields.length);pending.costReviewItems=buildCostReviewItems(dated,pending.reconciliation,result.rows,pending.mapping);pending.costSelections=Object.create(null);}else {pending.ebomImpact=engineeringChanges(getOccurrences(dated),result.rows,false);pending.ebomSelections=Object.create(null);}
 }
 function priceFieldMapped(mapping,stage){const key={target:'targetPrice',nomination:'nominationPrice',current:'currentPrice',sop:'sopPrice'}[stage];return mapping[key]!=null&&mapping[key]!=='';}
 function buildCostReconciliation(project,incomingRows,mapping){
@@ -3745,13 +3772,13 @@ function buildCostReconciliation(project,incomingRows,mapping){
    cells.push(cell);
   }
  }
- return {cells,conflicts:Array.from(groups.values()),unmatched:Array.from(incoming.keys()).filter(number=>!active.has(number)),ebomImportId:currentImport(project)?.importId || null};
+ return {cells,conflicts:Array.from(groups.values()),unmatched:Array.from(incoming.keys()).filter(number=>!active.has(number) && !incomingByPart.get(number)?.[0]?.pendingPartNumber),ebomImportId:currentImport(project)?.importId || null};
 }
 function costReviewKey(kind,partNumber,field,variantId=''){return JSON.stringify([kind,partNumber,field,variantId]);}
 function buildCostReviewItems(project,reconciliation,incomingRows,mapping){
  const items=[],incoming=costSnapshotMap(incomingRows),unmatched=new Set(reconciliation.unmatched || []);
- for(const cell of reconciliation.cells || []){if(!cell.supplied)continue;const before=cell.before?.amount??null,after=incoming.get(cell.partNumber)?.prices?.[cell.stage]??null;if(before===after)continue;items.push({key:costReviewKey('price',cell.partNumber,cell.stage,cell.variantId),kind:'price',partNumber:cell.partNumber,field:cell.stage,variantId:cell.variantId,before,after,unmatched:unmatched.has(cell.partNumber)});}
- const seen=new Set();for(const row of incomingRows || []){if(seen.has(row.partNumber))continue;seen.add(row.partNumber);const existing=partAttributes(project,row.partNumber);for(const [field,label,source] of [['category1','一级领域','category1'],['category2','二级领域','category2'],['dre','DRE','dre'],['commercialOwner','商务负责人','commercialOwner'],['nominationSupplier','供应商','supplier'],['costRemark','备注','costRemark']]){if(mapping[source]==null||mapping[source]==='')continue;const before=existing[field] || '',after=row[source] || '';if(before!==after)items.push({key:costReviewKey('attribute',row.partNumber,field),kind:'attribute',partNumber:row.partNumber,field,label,before,after,unmatched:unmatched.has(row.partNumber)});}}
+ for(const cell of reconciliation.cells || []){if(!cell.supplied)continue;const before=cell.before?.amount??null,after=incoming.get(cell.partNumber)?.prices?.[cell.stage]??null;if(before===after)continue;items.push({key:costReviewKey('price',cell.partNumber,cell.stage,cell.variantId),kind:'price',partNumber:cell.partNumber,pendingPartNumber:incoming.get(cell.partNumber)?.pendingPartNumber,field:cell.stage,variantId:cell.variantId,before,after,unmatched:unmatched.has(cell.partNumber)});}
+ const seen=new Set();for(const row of incomingRows || []){if(seen.has(row.partNumber))continue;seen.add(row.partNumber);const existing=partAttributes(project,row.partNumber);for(const [field,label,source] of [['category1','一级领域','category1'],['category2','二级领域','category2'],['dre','DRE','dre'],['commercialOwner','商务负责人','commercialOwner'],['nominationSupplier','供应商','supplier'],['costRemark','备注','costRemark']]){if(mapping[source]==null||mapping[source]==='')continue;const before=existing[field] || '',after=row[source] || '';if(before!==after)items.push({key:costReviewKey('attribute',row.partNumber,field),kind:'attribute',partNumber:row.partNumber,pendingPartNumber:row.pendingPartNumber,field,label,before,after,unmatched:unmatched.has(row.partNumber)});}}
  return items;
 }
 function unresolvedCostChoices(pending){return (pending.reconciliation?.conflicts || []).filter(row=>!['old','new'].includes(pending.priceChoices?.[row.key]));}
@@ -3765,7 +3792,7 @@ function createCostImportPlan(project,preview,pending,versionLabel){
  const reviewItems=buildCostReviewItems(project,reconciliation,preview.rows,pending.mapping),reviewKeys=new Set(reviewItems.map(item=>item.key)),approvedKeys=new Set(Object.keys(pending.costSelections || {}).filter(key=>pending.costSelections[key]===true&&reviewKeys.has(key)));
  const versions=project.costImports || [],previous=latestBomRecord(versions),last=(project.prices || []).reduce((n,p)=>Math.max(n,Number.isFinite(Date.parse(p.recordedAt))?Date.parse(p.recordedAt):0),0);
  const importedAt=new Date(Math.max(Date.now(),last+1)).toISOString(),importId=newId();
- const record={importId,projectId:project.id,previousImportId:previous?.importId || null,approvedCostChanges:clone(reviewItems.filter(item=>approvedKeys.has(item.key))),versionLabel:versionLabel || 'Cost BOM '+(versions.length+1),fileName:pending.fileName,fileHash:pending.fileHash,versionDate,importedAt,locked:true,lockedAt:importedAt,mapping:clone(pending.mapping),snapshot:clone(preview.rows),diff:diffCostBom(previous?.snapshot || [],preview.rows),ebomImportId:currentImport(project).importId,structureSnapshot:clone(getOccurrences(project)),resolvedPrices:{},priceResolutions:[],priceOutcomes:[],archiveId:pending.sourceArchive?newId():null};
+ const record={importId,projectId:project.id,previousImportId:previous?.importId || null,approvedCostChanges:clone(reviewItems.filter(item=>approvedKeys.has(item.key))),versionLabel:versionLabel || 'Cost BOM '+(versions.length+1),fileName:pending.fileName,fileHash:pending.fileHash,versionDate,importedAt,locked:true,lockedAt:importedAt,mapping:clone(pending.mapping),snapshot:clone(preview.rows),diff:diffCostBom(previous?.snapshot || [],preview.rows),ebomImportId:currentImport(project).importId,structureSnapshot:clone(costStructureRows(project,preview.rows)),resolvedPrices:{},priceResolutions:[],priceOutcomes:[],archiveId:pending.sourceArchive?newId():null};
  const prices=[],attributes=Object.create(null),byNumber=new Map(),incomingPrices=costSnapshotMap(preview.rows),unmatchedParts=new Set(reconciliation.unmatched);
  for(const cell of reconciliation.cells){
   const key=costReviewKey('price',cell.partNumber,cell.stage,cell.variantId),approved=approvedKeys.has(key),sourceValue=incomingPrices.get(cell.partNumber)?.prices?.[cell.stage]??null,choice=approved?'new':'old',chosen=approved?{amount:sourceValue,status:sourceValue==null?'missing':cell.stage==='target'?'estimate':'formal',supplier:approvedKeys.has(costReviewKey('attribute',cell.partNumber,'nominationSupplier'))?(cell.after.supplier || null):(cell.before?.supplier || null),source:'用户确认导入'}:cell.before?{amount:cell.before.amount,status:cell.before.status,supplier:cell.before.supplier || null,source:cell.before.source || '沿用原价'}:{amount:null,status:'missing',supplier:null,source:'未选择变更'};
@@ -3893,13 +3920,13 @@ function renderMappingWizard(){
  const preview=pending.preview;
  const changes=cost?preview.diff.changes:preview.diff.details || [],showSource=preview.rows.slice(0,10),headers=showSource[0]?.sourceFields || [];
  const impact=cost?'':'<div class="section-title"><h2>确认应用到 Cost BOM 的变化</h2><button class="btn btn-secondary btn-sm" data-action="ebom-select-all">一键全选</button></div><div class="hint">按零件号逐项勾选；未勾选的零件在 Cost BOM 保留原值。完整 EBOM 原表仍会保存。</div><div class="table-wrap"><table class="data-table"><thead><tr><th>应用</th><th>零件号 / 名称</th><th>变化类型</th><th>原值 → 导入值</th></tr></thead><tbody>'+((pending.ebomImpact || []).map(row=>'<tr><td><input type="checkbox" data-ebom-impact-choice="'+esc(row.partNumber)+'" aria-label="应用 '+esc(row.partNumber)+' 的变化"'+(pending.ebomSelections?.[row.partNumber]?' checked':'')+'></td><td>'+esc(row.partNumber)+'<div class="part-no">'+esc((row.after?.names || row.before?.names || []).join('、'))+'</div></td><td>'+esc(row.type)+'</td><td style="white-space:normal">'+(row.fields.length?row.fields.map(field=>'<div>'+esc(field.label)+'：'+esc(engineeringDiffValue(field.before))+' → '+esc(engineeringDiffValue(field.after))+'</div>').join(''):esc(engineeringDiffValue(row.before || row.after)))+'</td></tr>').join('') || '<tr><td colspan="4">与当前 Cost BOM 结构无变化</td></tr>')+'</tbody></table></div>';
- const costReview=cost?'<div class="section-title"><h2>确认应用的成本变化</h2><button class="btn btn-secondary btn-sm" data-action="cost-select-all">一键全选</button></div><div class="hint">仅勾选的变化会应用；未勾选的价格和成本信息保留原值。空价格只有勾选后才会清空。</div><div class="table-wrap"><table class="data-table"><thead><tr><th>应用</th><th>零件号</th><th>变化项目</th><th>配置</th><th>当前值</th><th>导入值</th><th>匹配情况</th></tr></thead><tbody>'+((pending.costReviewItems || []).map(item=>'<tr><td><input type="checkbox" data-cost-review-choice="'+esc(item.key)+'" aria-label="应用 '+esc(item.partNumber)+' 的变化"'+(pending.costSelections?.[item.key]?' checked':'')+'></td><td>'+esc(item.partNumber)+'</td><td>'+esc(item.kind==='price'?stageLabel(item.field)+'价格':item.label)+'</td><td>'+esc(item.variantId?getVariant(getActiveProject(),item.variantId)?.name || item.variantId:'—')+'</td><td>'+esc(item.kind==='price'?money(item.before):item.before || '—')+'</td><td>'+esc(item.kind==='price'?money(item.after):item.after || '—')+'</td><td>'+(item.unmatched?'未匹配 EBOM':'已匹配')+'</td></tr>').join('') || '<tr><td colspan="7">没有需要确认的成本变化</td></tr>')+'</tbody></table></div>':'';
+ const costReview=cost?'<div class="section-title"><h2>确认应用的成本变化</h2><button class="btn btn-secondary btn-sm" data-action="cost-select-all">一键全选</button></div><div class="hint">仅勾选的变化会应用；未勾选的价格和成本信息保留原值。空价格只有勾选后才会清空。</div><div class="table-wrap"><table class="data-table"><thead><tr><th>应用</th><th>零件号</th><th>变化项目</th><th>配置</th><th>当前值</th><th>导入值</th><th>匹配情况</th></tr></thead><tbody>'+((pending.costReviewItems || []).map(item=>'<tr><td><input type="checkbox" data-cost-review-choice="'+esc(item.key)+'" aria-label="应用 '+esc(item.partNumber)+' 的变化"'+(pending.costSelections?.[item.key]?' checked':'')+'></td><td>'+esc(costPartNumberLabel(item))+'</td><td>'+esc(item.kind==='price'?stageLabel(item.field)+'价格':item.label)+'</td><td>'+esc(item.variantId?getVariant(getActiveProject(),item.variantId)?.name || item.variantId:'—')+'</td><td>'+esc(item.kind==='price'?money(item.before):item.before || '—')+'</td><td>'+esc(item.kind==='price'?money(item.after):item.after || '—')+'</td><td>'+(item.unmatched?'未匹配 EBOM':'已匹配')+'</td></tr>').join('') || '<tr><td colspan="7">没有需要确认的成本变化</td></tr>')+'</tbody></table></div>':'';
  const datedProject=bomProjectAt(getActiveProject(),new Date(bomVersionDate(pending.versionDate)+'T23:59:59.999').getTime()),impactTotals=cost?null:ebomImpactTotals(datedProject,pending.ebomImpact || []);
  const impactSummary=cost?'':'<div class="hint">全部待确认变化按现有价格测算：'+datedProject.variants.map(variant=>{const total=impactTotals[variant.id];return esc(variant.name)+' '+(total.missing?'待补价（'+total.missing+' 项）':esc(riskDeltaMoney(total.amount)));}).join('　')+'。仅勾选项目会应用。</div>';
  const structureReview=cost&&(pending.costStructureDifferences || []).length?'<details><summary>EBOM 与导入文件的结构差异（'+pending.costStructureDifferences.length+' 项）</summary><div class="hint">以下内容仅供核对，Cost BOM 结构仍以已确认的 EBOM 为准。</div><div class="table-wrap"><table class="data-table"><thead><tr><th>零件号</th><th>情况</th><th>EBOM → 导入文件</th></tr></thead><tbody>'+pending.costStructureDifferences.map(row=>'<tr><td>'+esc(row.partNumber)+'</td><td>'+esc(row.type==='新增'?'仅导入文件有':row.type==='移除'?'仅 EBOM 有':'信息不一致')+'</td><td style="white-space:normal">'+row.fields.map(field=>'<div>'+esc(field.label)+'：'+esc(engineeringDiffValue(field.before))+' → '+esc(engineeringDiffValue(field.after))+'</div>').join('')+'</td></tr>').join('')+'</tbody></table></div></details>':'';
  const noEbom=cost&&!getActiveProject().imports.length;
  const packageDiff=cost?renderTargetPackageDiff(preview.diff.packageChanges || [],getActiveProject().targetPackageNames):'';
- return '<section class="card" style="margin-bottom:14px"><div class="panel-head"><h2>'+esc(cost?'Cost BOM导入预览与价格确认':'EBOM导入预览')+'</h2><button class="btn btn-quiet btn-sm" data-action="edit-bom-mapping">调整字段设置</button></div><div class="panel-body"><div class="small muted">'+esc(pending.mappingSource || '字段已识别')+' · '+esc(pending.fileName)+' · '+preview.rows.length+'行 · 原文件将在确认导入后本机存档</div><div class="field"><label>版本标识</label><input id="importVersionLabel" value="'+esc(pending.versionLabel)+'"></div>'+renderImportVersionDate()+''+(pending.parsed.sheets.length>1?'<div class="field"><label>工作表</label><select id="sheetPicker">'+pending.parsed.sheets.map((s,i)=>'<option value="'+i+'"'+(i===pending.sheetIndex?' selected':'')+'>'+esc(s.name)+'</option>').join('')+'</select></div>':'')+'<div class="alert info">S＝标配×公共用量；O＝选配，仅展示单价；-＝不配。'+(cost?'Cost BOM仅更新价格，不改写EBOM配置结构。请逐项勾选需要应用的价格和成本信息。':'本次确认后自动锁板、保存原始文件并记录全部变化。EBOM 数据只读，作为 Cost BOM 清单的数据来源。')+'</div>'+(preview.errors.length?'<div class="alert error">'+preview.errors.slice(0,25).map(esc).join('<br>')+(preview.errors.length>25?'<br>共 '+preview.errors.length+' 项，请修正源文件后重试。':'')+'</div>':'')+(noEbom?'<div class="alert error">请先导入EBOM，Cost BOM必须按最新版EBOM生成。</div>':'')+(cost&&pending.reconciliation.unmatched.length?'<div class="alert">有'+pending.reconciliation.unmatched.length+'个零件号不在当前EBOM中。价格会留档，但不会新增装车条目：'+pending.reconciliation.unmatched.map(esc).join('、')+'</div>':'')+(cost?renderTargetPackages(targetPackages(preview.rows))+packageDiff:'')+costReview+structureReview+'<details><summary>查看原表预览（前10行，全部维度）</summary><div class="table-wrap"><table class="data-table"><thead><tr>'+headers.map(f=>'<th>'+esc(f.label)+'</th>').join('')+'</tr></thead><tbody>'+showSource.map(row=>'<tr>'+row.sourceFields.map(f=>'<td>'+esc(f.value)+'</td>').join('')+'</tr>').join('')+'</tbody></table></div></details><details><summary>查看本次文件相对前版的变化 · '+changes.length+' 个零件号</summary><div class="table-wrap"><table class="data-table"><tbody>'+changes.map(row=>'<tr><td>'+esc(row.partNumber)+'</td><td>'+esc(row.type)+'</td><td style="white-space:normal">'+row.fields.map(f=>esc(f.label)+'：'+esc(costValue(f.before))+' → '+esc(costValue(f.after))).join('<br>')+'</td></tr>').join('')+'</tbody></table></div></details>'+impact+'<div class="modal-footer"><button class="btn btn-secondary" data-action="cancel-import">取消</button><button class="btn btn-primary" data-action="confirm-import"'+(preview.errors.length||noEbom?' disabled':'')+'>确认导入并锁板存档</button></div></div></section>';
+ return '<section class="card" style="margin-bottom:14px"><div class="panel-head"><h2>'+esc(cost?'Cost BOM导入预览与价格确认':'EBOM导入预览')+'</h2><button class="btn btn-quiet btn-sm" data-action="edit-bom-mapping">调整字段设置</button></div><div class="panel-body"><div class="small muted">'+esc(pending.mappingSource || '字段已识别')+' · '+esc(pending.fileName)+' · '+preview.rows.length+'行 · 原文件将在确认导入后本机存档</div><div class="field"><label>版本标识</label><input id="importVersionLabel" value="'+esc(pending.versionLabel)+'"></div>'+renderImportVersionDate()+''+(pending.parsed.sheets.length>1?'<div class="field"><label>工作表</label><select id="sheetPicker">'+pending.parsed.sheets.map((s,i)=>'<option value="'+i+'"'+(i===pending.sheetIndex?' selected':'')+'>'+esc(s.name)+'</option>').join('')+'</select></div>':'')+'<div class="alert info">S＝标配×公共用量；O＝选配，仅展示单价；-＝不配。'+(cost?'请勾选要应用的价格和成本信息。待补零件号的有价行按表内配置和用量计入 Cost BOM。':'本次确认后自动锁板、保存原始文件并记录全部变化。EBOM 数据只读，作为 Cost BOM 清单的数据来源。')+'</div>'+(preview.errors.length?'<div class="alert error">'+preview.errors.slice(0,25).map(esc).join('<br>')+(preview.errors.length>25?'<br>共 '+preview.errors.length+' 项，请修正源文件后重试。':'')+'</div>':'')+(noEbom?'<div class="alert error">请先导入EBOM，Cost BOM必须按最新版EBOM生成。</div>':'')+(cost&&pending.reconciliation.unmatched.length?'<div class="alert">有'+pending.reconciliation.unmatched.length+'个零件号不在当前EBOM中。价格会留档，但不会新增装车条目：'+pending.reconciliation.unmatched.map(esc).join('、')+'</div>':'')+(cost?renderTargetPackages(targetPackages(preview.rows))+packageDiff:'')+costReview+structureReview+'<details><summary>查看原表预览（前10行，全部维度）</summary><div class="table-wrap"><table class="data-table"><thead><tr>'+headers.map(f=>'<th>'+esc(f.label)+'</th>').join('')+'</tr></thead><tbody>'+showSource.map(row=>'<tr>'+row.sourceFields.map(f=>'<td>'+esc(f.value)+'</td>').join('')+'</tr>').join('')+'</tbody></table></div></details><details><summary>查看本次文件相对前版的变化 · '+changes.length+' 个零件号</summary><div class="table-wrap"><table class="data-table"><tbody>'+changes.map(row=>'<tr><td>'+esc(costPartNumberLabel(row))+'</td><td>'+esc(row.type)+'</td><td style="white-space:normal">'+row.fields.map(f=>esc(f.label)+'：'+esc(costValue(f.before))+' → '+esc(costValue(f.after))).join('<br>')+'</td></tr>').join('')+'</tbody></table></div></details>'+impact+'<div class="modal-footer"><button class="btn btn-secondary" data-action="cancel-import">取消</button><button class="btn btn-primary" data-action="confirm-import"'+(preview.errors.length||noEbom?' disabled':'')+'>确认导入并锁板存档</button></div></div></section>';
 }
 function renderLatestEbom(project,record) {
  const variants=bomVariants(project),headers=['层级','产品系统层','零件号','零件名称','产品尺寸及状态描述','用量','单位','开发策略（新开发/扩展/借用）','应用工程师（BOM工程师）',...variants.map(v=>v.name)];
@@ -4050,10 +4077,10 @@ function costPartEditDialog(partNumber){
  const saved=project.priceStatusOverrides?.[JSON.stringify([partNumber,variant.id])],mode=saved==='formal'?summary.current?.priceKind:saved || 'auto';
  const statusOptions=[['auto','自动判断'],['estimate','预估价'],['quotation','报价'],['nominated','正式价']].map(([v,t])=>'<option value="'+v+'"'+(v===mode?' selected':'')+'>'+t+'</option>').join('');
  const readonly='Gap、Gap%、Δ 和 Δ% 根据价格自动计算。零件号作为关联标识，不可修改；工程数据只在 Cost BOM 中修改，不改变 EBOM 原始版本。';
- openDialog('编辑 Cost BOM 零件 · '+partNumber,'<form id="costPartEditForm"><input type="hidden" name="partNumber" value="'+esc(partNumber)+'"><input type="hidden" name="variantId" value="'+esc(variant.id)+'"><div class="hint">'+readonly+'</div><div class="change-sections">'+sections+'<section class="change-panel"><h3 class="change-panel-title">'+esc(variant.name)+' · 成本信息</h3><div class="form-grid">'+field('目标成本（单件）','target',summary.target?.amount,'number')+field('定点价格（单件）','nomination',summary.nomination?.amount,'number')+field('当前价格（单件）','current',summary.current?.amount,'number')+'<div class="field"><label>价格状态</label><select name="priceStatus">'+statusOptions+'</select></div>'+field('已定点供应商','supplier',attrs.nominationSupplier || summary.nomination?.supplier)+field('一级领域','category1',attrs.category1)+field('二级领域','category2',attrs.category2)+field('DRE 责任人','dre',attrs.dre)+field('商务责任人','commercialOwner',attrs.commercialOwner)+field('备注','costRemark',attrs.costRemark)+'</div></section></div>'+dialogFooter('取消','保存修改')+'</form>');
+ openDialog('编辑 Cost BOM 零件 · '+costPartNumberLabel(summary),'<form id="costPartEditForm"><input type="hidden" name="partNumber" value="'+esc(partNumber)+'"><input type="hidden" name="variantId" value="'+esc(variant.id)+'"><div class="hint">'+readonly+'</div><div class="change-sections">'+sections+'<section class="change-panel"><h3 class="change-panel-title">'+esc(variant.name)+' · 成本信息</h3><div class="form-grid">'+field('目标成本（单件）','target',summary.target?.amount,'number')+field('定点价格（单件）','nomination',summary.nomination?.amount,'number')+field('当前价格（单件）','current',summary.current?.amount,'number')+'<div class="field"><label>价格状态</label><select name="priceStatus">'+statusOptions+'</select></div>'+field('已定点供应商','supplier',attrs.nominationSupplier || summary.nomination?.supplier)+field('一级领域','category1',attrs.category1)+field('二级领域','category2',attrs.category2)+field('DRE 责任人','dre',attrs.dre)+field('商务责任人','commercialOwner',attrs.commercialOwner)+field('备注','costRemark',attrs.costRemark)+'</div></section></div>'+dialogFooter('取消','保存修改')+'</form>');
 }
 async function saveCostPartEdit(formData){
- const project=getActiveProject(),partNumber=String(formData.get('partNumber') || ''),variantId=String(formData.get('variantId') || ''),variant=getVariant(project,variantId),raw=getOccurrences(project).filter(row=>row.partNumber===partNumber),current=costOccurrences(project,true).filter(row=>row.partNumber===partNumber);
+ const project=getActiveProject(),partNumber=String(formData.get('partNumber') || ''),variantId=String(formData.get('variantId') || ''),variant=getVariant(project,variantId),raw=costStructureRows(project).filter(row=>row.partNumber===partNumber),current=costOccurrences(project,true).filter(row=>row.partNumber===partNumber);
  if(!variant||!raw.length||raw.length!==current.length)throw new Error('零件数据已变化，请重新打开编辑页面。');
  const fields=['level','system','name','specification','baseQuantity','unit','development','bomEngineer'],patches=[];
  raw.forEach((source,i)=>{const original=current[i],changed={},fitments={},variantQuantities={};
@@ -4072,7 +4099,7 @@ async function saveCostPartEdit(formData){
  closeDialog();render();showToast('Cost BOM 零件已更新。');
 }
 async function setCostPartDeleted(partNumber,variantId,deleted){
- const project=getActiveProject(),variant=getVariant(project,variantId);if(!variant||!getOccurrences(project).some(row=>row.partNumber===partNumber))throw new Error('找不到该零件或配置。');
+ const project=getActiveProject(),variant=getVariant(project,variantId);if(!variant||!costStructureRows(project).some(row=>row.partNumber===partNumber))throw new Error('找不到该零件或配置。');
  const before=!!costDeletedParts(project,variantId).get(partNumber);if(before===deleted)return;
  await commitMutation({projectId:project.id,entityType:'partAttributes',entityId:partNumber,action:deleted?'void':'restore',partNumbers:[partNumber],before:{variantId,deleted:before},after:{variantId,deleted},note:(deleted?'从当前配置删除零件':'恢复当前配置零件')},()=>{project.costPartDeletions=project.costPartDeletions || [];project.costPartDeletions.push({partNumber,variantId,deleted,recordedAt:nowIso()});});
  render();showToast(deleted?'零件已从当前配置移除，可在已删除零件中恢复。':'零件已恢复。');
@@ -4086,9 +4113,9 @@ function renderBOMDetails(){
  const thresholds=getThresholds();
  const body=rows.map(row=>{
   const unitGap=calculateDifference(row.current?.amount??null,row.target?.amount??null),unitDelta=calculateDifference(row.current?.amount??null,row.nomination?.amount??null),attrs=partAttributes(project,row.partNumber);
-  return '<tr><td>'+esc(engineering(row,'level'))+'</td><td>'+esc(engineering(row,'system'))+'</td><td class="mono">'+esc(row.partNumber)+'</td><td>'+esc(partName(row.partNumber,row))+'</td><td>'+esc(engineering(row,'specification'))+'</td><td>'+esc(commonBomQuantity(row))+'</td><td>'+esc(row.units.join('/'))+'</td><td>'+esc(engineering(row,'development'))+'</td><td>'+esc(engineering(row,'bomEngineer'))+'</td>'+('<td>'+esc(row.displayFitmentByVariant?.[variant.id] ?? row.fitmentByVariant?.[variant.id] ?? (row.quantity?'S':'-'))+'</td>')+'<td>'+esc(row.targetPackage?'打包目标':money(row.target?.amount))+'</td><td>'+esc(money(row.nomination?.amount))+'</td><td>'+esc(money(row.current?.amount))+'</td><td>'+costPriceStatusSelect(project,variant,row)+'</td><td><input class="cost-remark-input" type="text" maxlength="500" data-cost-remark data-part="'+esc(row.partNumber)+'" aria-label="'+esc(row.partNumber)+' 备注" placeholder="填写备注" value="'+esc(attrs.costRemark || '')+'"></td><td>'+esc(attrs.category1 || '—')+'</td><td>'+esc(attrs.category2 || '—')+'</td><td class="'+(exceedsThreshold(unitGap.amount,thresholds.gapAmount)?'cost-over-limit':'')+'">'+esc(money(unitGap.amount))+'</td><td class="'+(exceedsThreshold(unitGap.percentage,thresholds.gapPercent)?'cost-over-limit':'')+'">'+esc(pct(unitGap.percentage))+'</td><td class="'+(exceedsThreshold(unitDelta.amount,thresholds.deltaAmount)?'cost-over-limit':'')+'">'+esc(money(unitDelta.amount))+'</td><td class="'+(exceedsThreshold(unitDelta.percentage,thresholds.deltaPercent)?'cost-over-limit':'')+'">'+esc(pct(unitDelta.percentage))+'</td><td>'+esc(row.nomination?.supplier || attrs.nominationSupplier || '—')+'</td><td><div class="risk-actions" style="flex-direction:row"><button class="btn btn-secondary btn-sm" data-action="cost-part-edit" data-part="'+esc(row.partNumber)+'">编辑</button><button class="btn btn-secondary btn-sm risk-delete-button" data-action="cost-part-delete" data-part="'+esc(row.partNumber)+'">删除</button></div></td></tr>';
+  return '<tr><td>'+esc(engineering(row,'level'))+'</td><td>'+esc(engineering(row,'system'))+'</td><td class="mono">'+esc(costPartNumberLabel(row))+'</td><td>'+esc(partName(row.partNumber,row))+'</td><td>'+esc(engineering(row,'specification'))+'</td><td>'+esc(commonBomQuantity(row))+'</td><td>'+esc(row.units.join('/'))+'</td><td>'+esc(engineering(row,'development'))+'</td><td>'+esc(engineering(row,'bomEngineer'))+'</td>'+('<td>'+esc(row.displayFitmentByVariant?.[variant.id] ?? row.fitmentByVariant?.[variant.id] ?? (row.quantity?'S':'-'))+'</td>')+'<td>'+esc(row.targetPackage?'打包目标':money(row.target?.amount))+'</td><td>'+esc(money(row.nomination?.amount))+'</td><td>'+esc(money(row.current?.amount))+'</td><td>'+costPriceStatusSelect(project,variant,row)+'</td><td><input class="cost-remark-input" type="text" maxlength="500" data-cost-remark data-part="'+esc(row.partNumber)+'" aria-label="'+esc(row.partNumber)+' 备注" placeholder="填写备注" value="'+esc(attrs.costRemark || '')+'"></td><td>'+esc(attrs.category1 || '—')+'</td><td>'+esc(attrs.category2 || '—')+'</td><td class="'+(exceedsThreshold(unitGap.amount,thresholds.gapAmount)?'cost-over-limit':'')+'">'+esc(money(unitGap.amount))+'</td><td class="'+(exceedsThreshold(unitGap.percentage,thresholds.gapPercent)?'cost-over-limit':'')+'">'+esc(pct(unitGap.percentage))+'</td><td class="'+(exceedsThreshold(unitDelta.amount,thresholds.deltaAmount)?'cost-over-limit':'')+'">'+esc(money(unitDelta.amount))+'</td><td class="'+(exceedsThreshold(unitDelta.percentage,thresholds.deltaPercent)?'cost-over-limit':'')+'">'+esc(pct(unitDelta.percentage))+'</td><td>'+esc(row.nomination?.supplier || attrs.nominationSupplier || '—')+'</td><td><div class="risk-actions" style="flex-direction:row"><button class="btn btn-secondary btn-sm" data-action="cost-part-edit" data-part="'+esc(row.partNumber)+'">编辑</button><button class="btn btn-secondary btn-sm risk-delete-button" data-action="cost-part-delete" data-part="'+esc(row.partNumber)+'">删除</button></div></td></tr>';
  }).join('');
- const deleted=Array.from(costDeletedParts(project,variant.id)).filter(([,value])=>value).map(([number])=>number).filter(number=>getOccurrences(project).some(row=>row.partNumber===number));
+ const deleted=Array.from(costDeletedParts(project,variant.id)).filter(([,value])=>value).map(([number])=>number).filter(number=>costStructureRows(project).some(row=>row.partNumber===number));
  const trash=deleted.length?'<details class="risk-deleted"><summary>已删除零件（'+deleted.length+'）</summary>'+deleted.map(number=>'<div class="risk-deleted-row"><span>'+esc(number)+'</span><button class="btn btn-quiet btn-sm" data-action="cost-part-restore" data-part="'+esc(number)+'">恢复</button></div>').join('')+'</details>':'';
  const switches=project.variants.map(v=>'<button type="button" class="btn '+(v.id===variant.id?'btn-primary':'btn-secondary')+'" data-action="review-variant" data-variant="'+esc(v.id)+'" aria-pressed="'+(v.id===variant.id)+'">'+esc(v.name)+'</button>').join('');
 
